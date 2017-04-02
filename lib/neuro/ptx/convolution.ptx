@@ -1,0 +1,91 @@
+.version 5.0
+.target sm_20
+.address_size 64
+
+.visible .entry convolution(
+	.param .u64 .ptr .global input,  // %cd0
+	.param .u64 .ptr .global w,      // %cd1
+	.param .u64 .ptr .global output, // %cd2
+	.param .u32 wx, // %c0
+	.param .u32 wy, // %c1
+	.param .u32 sx, // %c2
+	.param .u32 sy  // %c3
+)
+{
+  .reg .u64   %cd<4>;
+  .reg .u32   %c<9>;
+	.reg .u64 	%vd<3>;
+	.reg .u32		%v<1>;
+	.reg .f32 	%f<3>;
+	.reg .pred	p;
+
+	ld.param.u64 	%cd0, [input];
+	ld.param.u64 	%cd1, [w];
+	ld.param.u64 	%cd2, [output];
+	ld.param.u32	%c0, [wx];
+	ld.param.u32	%c1, [wy];
+	ld.param.u32	%c2, [sx];
+	ld.param.u32	%c3, [sy];
+	mov.u32				%c4, %tid.x;
+	mov.u32				%c5, %tid.y;
+	mov.u32				%c6, %tid.z;
+	mov.u32				%c7, %ntid.x;
+	mov.u32				%c8, %ntid.y;
+
+	// (%cd3) ninput.x = (ntid.x - 1) * sx + wx
+	sub.u32				%v0, %c7, 1;
+	cvt.u64.u32		%vd0, %c0;
+	mad.wide.u32	%cd3, %v0, %c2, %vd0;
+
+	// (%cd0) input.offset = input + (tid.x * sx + tid.y * sy * ninput.x) * 4
+	mul.wide.u32	%vd0, %c5, %c3;
+	mul.lo.u64		%vd0, %vd0, %cd3;
+	mad.wide.u32	%vd0, %c4, %c2, %vd0;
+	mad.lo.u64		%cd0, %vd0, 4, %cd0;
+
+	// (%cd1) w.offset = w + (tid.z * wx * wy * 4)
+	mul.wide.u32 	%vd0, %c6, %c0;
+	cvt.u64.u32		%vd1, %c1;
+	mul.lo.u64		%vd0, %vd0, %vd1;
+	mad.lo.u64		%cd1, %vd0, 4, %cd1;
+
+	// (%cd2) output.offset = output + (tid.z * ntid.x * ntid.y + tid.y * ntid.x + tid.x) * 4
+	cvt.u64.u32		%vd1, %c4;
+	mad.wide.u32 	%vd0, %c5, %c7, %vd1;
+	mul.wide.u32	%vd1, %c7, %c8;
+	cvt.u64.u32		%vd2, %c6;
+	mad.lo.u64		%vd0, %vd1, %vd2, %vd0;
+	mad.lo.u64		%cd2, %vd0, 4, %cd2;
+
+	// (%vd0) dx = (ninput.x - wx) * 4
+	cvt.u64.u32		%vd0, %c0;
+	sub.u64				%vd0, %cd3, %vd0;
+	mul.lo.u64		%vd0, %vd0, 4;
+
+	// %f0 - accumulator
+	mov.f32				%f0, 0.0;
+
+loop_y:
+	mov.u32				%v0, %c0;
+loop_x:
+	// acc = acc + [input] * [w]
+	ld.global.f32	%f1, [%cd0];
+	ld.global.f32 %f2, [%cd1];
+	mad.rn.f32		%f0, %f1, %f2, %f0;
+	// next point
+	add.u64				%cd0, %cd0, 4;
+	add.u64				%cd1, %cd1, 4;
+	// count x
+	sub.u32				%v0, %v0, 1;
+	setp.ne.u32		p, %v0, 0;
+	@p bra 				loop_x;
+	// next line
+	add.u64				%cd0, %cd0, %vd0;
+	// count y
+	sub.u32  			%c1, %c1, 1;
+	setp.ne.u32		p, %c1, 0;
+	@p bra				loop_y;
+
+	st.global.f32	[%cd2], %f0;
+	ret;
+}
