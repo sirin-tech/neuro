@@ -14,6 +14,10 @@ defmodule ConvolutionTest do
     w = w |> List.flatten |> Enum.reduce(<<>>, & &2 <> <<&1::float-little-32>>)
     o = Neuro.Convolution.run({4, 4, i}, {2, 2, 2, w}, {1, 1})
     o = Enum.map(o, & Float.round(&1, 1))
+
+    # 4.4 = 0.1 * 1.0 + 0.2 * 2.0 + 0.5 * 3.0 + 0.6 * 4.0
+    # 5.4 = 0.2 * 1.0 + 0.3 * 2.0 + 0.6 * 3.0 + 0.7 * 4.0
+    # ...
     assert o == [
       4.4, 5.4, 6.4,
       5.1, 3.1, 4.1,
