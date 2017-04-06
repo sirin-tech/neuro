@@ -5,7 +5,7 @@ defmodule Neuro.Convolution do
   @func "convolution"
 
   def run({ix, iy, input}, {wx, wy, wz, w}, {sx, sy}) do
-    {:ok, cuda} = Cuda.start_link(port_bin: "../cuda/priv/cuda_port")
+    {:ok, cuda} = Cuda.start_link()
     nx = round((ix - wx + sx) / sx)
     ny = round((iy - wy + sy) / sy)
     size = nx * ny * wz * 32

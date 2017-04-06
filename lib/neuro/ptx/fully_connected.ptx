@@ -2,7 +2,7 @@
 .target sm_20
 .address_size 64
 
-.visible .entry fullconnected(
+.visible .entry fully_connected(
 	.param .u64 .ptr .global input,  // %cd0
 	.param .u64 .ptr .global w,      // %cd1
 	.param .u64 .ptr .global output, // %cd2
@@ -39,7 +39,7 @@ loop_x:
   ld.global.f32 %f2, [%cd1];
   // accumulator = accumulator + w[x]*input[x]
   mad.rn.f32 %f0, %f1, %f2, %f0;
-  //next values
+  // next values
   add.u64 %cd0, %cd0, 4;
   add.u64 %cd1, %cd1, 4;
   // count x

@@ -1,8 +1,8 @@
-defmodule Neuro.FullConnected do
+defmodule Neuro.FullyConnected do
   use Neuro.Layer
 
-  @ptx "lib/neuro/ptx/fullconnected.ptx"
-  @func "fullconnected"
+  @ptx "lib/neuro/ptx/fully_connected.ptx"
+  @func "fully_connected"
 
   def run({input, weights, ix}, ox) when is_list(input) do
     run({to_arr(input), weights, ix}, ox)
@@ -11,7 +11,7 @@ defmodule Neuro.FullConnected do
     run({input, to_arr(weights), ix}, ox)
   end
   def run({input, weights, ix}, ox) do
-    {:ok, cuda} = Cuda.start_link(port_bin: "../cuda/priv/cuda_port")
+    {:ok, cuda} = Cuda.start_link()
     size = ox * 32
     {:ok, moutput} = Cuda.memory_load(cuda, <<0::size(size)>>)
     {:ok, minput}  = Cuda.memory_load(cuda, input)
