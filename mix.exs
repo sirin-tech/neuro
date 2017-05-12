@@ -5,6 +5,7 @@ defmodule Neuro.Mixfile do
     [app: :neuro,
      version: "0.1.0",
      elixir: "~> 1.4",
+     elixirc_paths: paths(),
      build_embedded: Mix.env == :prod,
      start_permanent: Mix.env == :prod,
      deps: deps()]
@@ -17,5 +18,9 @@ defmodule Neuro.Mixfile do
 
   defp deps do
     [{:cuda, path: "../cuda"}]
+  end
+
+  defp paths do
+    ["lib", Path.join(~w(test support))]
   end
 end

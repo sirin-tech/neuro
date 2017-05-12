@@ -12,7 +12,7 @@ defmodule Neuro.Convolution do
     {:ok, moutput} = Cuda.memory_load(cuda, <<0::size(size)>>)
     {:ok, minput}  = Cuda.memory_load(cuda, input)
     {:ok, mw}      = Cuda.memory_load(cuda, w)
-    {:ok, module} = Cuda.compile(cuda, {:file, @ptx})
+    {:ok, module}  = Cuda.compile(cuda, {:file, @ptx})
     # IO.inspect({nx, ny, wz})
     :ok = Cuda.run(cuda, module, @func, {nx, ny, wz}, [minput, mw, moutput, wx, wy, sx, sy])
     {:ok, out} = Cuda.memory_read(cuda, moutput)
