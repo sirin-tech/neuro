@@ -19,11 +19,11 @@ defmodule Neuro.Nodes.Base do
     end
   end
 
-  def input_type(%{z: 1, x: x, y: y, f: f}), do: {{f, x}, {f, y}}
-  def input_type(%{z: z, x: x, y: y, f: f}), do: {{f, x}, {f, y}, {f, z}}
+  def input_type(%{z: 1, x: x, y: y, f: f}), do: {f, {x, y}}
+  def input_type(%{z: z, x: x, y: y, f: f}), do: {f, {x, y, z}}
 
-  def output_type(%{oz: 1, ox: x, oy: y, f: f}), do: {{f, x}, {f, y}}
-  def output_type(%{oz: z, ox: x, oy: y, f: f}), do: {{f, x}, {f, y}, {f, z}}
+  def output_type(%{oz: 1, ox: x, oy: y, f: f}), do: {f, {x, y}}
+  def output_type(%{oz: z, ox: x, oy: y, f: f}), do: {f, {x, y, z}}
 
   def triple_size({x, y}), do: {x, y, 1}
   def triple_size({_, _, _} = tuple), do: tuple

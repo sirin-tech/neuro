@@ -2,6 +2,10 @@ defmodule Neuro.Nodes.Padding do
   alias Neuro.Nodes.Base
   use Base
 
+  def __batch__(%{assigns: %{vars: vars}}) do
+    [{"padding", {vars.ox, vars.oy, 1}, {1, 1, 1}, []}]
+  end
+
   def __ptx__(_node) do
     """
     .version 5.0
@@ -10,70 +14,45 @@ defmodule Neuro.Nodes.Padding do
 
     <%= defkernel ctx, "padding" do %>
       .reg .u64   %cd<3>;
-      .reg .u32   %c<2>;
-      <%= if var(ctx, :py_size) > 0 do %>
-        .reg .<%= var(ctx, :f) %> %f<1>;
-      <% end %>
+      .reg .u64   %tidx;
+      .reg .u32   %tidy;
+      .reg .<%= var(ctx, :f) %> %f;
       .reg .pred  p;
 
+      cvt.u64.u32   %tidx, %tid.x;
+      mov.u32       %tidy, %tid.y;
+
+      // padding if x < px || x >= px + ix || y < py || y >= py + iy
+      setp.lo.u64 p, %tidx, <%= var(ctx, :px) %>;
+      setp.hs.or.u64 p, %tidx, <%= var(ctx, :px) + var(ctx, :x) %>, p;
+      setp.lo.or.u32 p, %tidy, <%= var(ctx, :py) %>, p;
+      setp.hs.or.u32 p, %tidy, <%= var(ctx, :py) + var(ctx, :y) %>, p;
+
       ld.param.u64  %cd0, [pins];
-      mov.u32       %c0, %tid.x;
-      cvt.u64.u32   %cd1, %c0;
 
-      // (%cd1) input.offset  = input  + tid.x * x * y * float_size
-      // (%cd2) output.offset = output + tid.x * ox * oy * float_size
-      mad.lo.u64    %cd2, %cd0, %cd1, <%= var(ctx, :ox) * var(ctx, :oy) * var(ctx, :float_size) %>;
-      mad.lo.u64    %cd1, %cd0, %cd1, <%= var(ctx, :x) * var(ctx, :y) * var(ctx, :float_size) %>;
-
-      <%= if var(ctx, :py_size) > 0 do %>
-        mov.u32 %c0, <%= var(ctx, :py_size) %>;
-      loop1:
-        st.global.<%= var(ctx, :f) %> [%cd2], <%= var(ctx, :padding) %>;
-        add.u64     %cd2, %cd2, <%= var(ctx, :float_size) %>;
-        sub.u32     %c0, %c0, 1;
-        setp.ne.u32 p, %c0, 0;
-        @p bra      loop1;
+      // (%cd2) output.offset = output + (tid.x + tid.y * ox) * float_size
+      mad.wide.u32  %cd1, %tidy, <%= var(ctx, :ox) %>, %tidx;
+      mad.lo.u64    %cd2, %cd1, <%= var(ctx, :float_size) %>, %cd0;
+      <%= if offset(ctx, :output) > 0 do %>
+        add.u64     %cd2, %cd2, <%= offset(ctx, :output) %>;
       <% end %>
 
-      <%= if var(ctx, :px) > 0 do %>
-        mov.u32 %c0, <%= var(ctx, :px) %>;
-      loop2:
-        st.global.<%= var(ctx, :f) %> [%cd2], <%= var(ctx, :padding) %>;
-        add.u64     %cd2, %cd2, <%= var(ctx, :float_size) %>;
-        sub.u32     %c0, %c0, 1;
-        setp.ne.u32 p, %c0, 0;
-        @p bra      loop2;
-
-        mov.u32 %c0, <%= var(ctx, :x) %>;
-      loop3:
-        ld.global.<%= var(ctx, :f) %> %f0, [%cd1];
-        st.global.<%= var(ctx, :f) %> [%cd2], %f0;
-        add.u64     %cd1, %cd1, <%= var(ctx, :float_size) %>;
-        add.u64     %cd2, %cd2, <%= var(ctx, :float_size) %>;
-        sub.u32     %c0, %c0, 1;
-        setp.ne.u32 p, %c0, 0;
-        @p bra      loop3;
-
-        mov.u32 %c0, <%= var(ctx, :px) %>;
-      loop4:
-        st.global.<%= var(ctx, :f) %> [%cd2], <%= var(ctx, :padding) %>;
-        add.u64     %cd2, %cd2, <%= var(ctx, :float_size) %>;
-        sub.u32     %c0, %c0, 1;
-        setp.ne.u32 p, %c0, 0;
-        @p bra      loop4;
-      <% else %>
-        add.u64     %cd2, %cd2, <%= var(ctx, :x) * var(ctx, :y) * var(ctx, :float_size) %>;
+      @p bra padding;
+      // (%cd1) input.offset  = input + (tid.x - px + (tid.y - py) * x) * float_size
+      sub.u64 %tidx, %tidx, <%= var(ctx, :px) %>;
+      sub.u32 %tidy, %tidy, <%= var(ctx, :py) %>;
+      mad.wide.u32 %cd1, %tidy, <%= var(ctx, :x) %>, %tidx;
+      mad.lo.u64 %cd1, %cd1, <%= var(ctx, :float_size) %>, %cd0;
+      <%= if offset(ctx, :input) > 0 do %>
+        add.u64     %cd1, %cd1, <%= offset(ctx, :input) %>;
       <% end %>
+      ld.global.<%= var(ctx, :f) %> %f, [%cd1];
+      st.global.<%= var(ctx, :f) %> [%cd2], %f;
+      ret;
 
-      <%= if var(ctx, :py_size) > 0 do %>
-        mov.u32 %c1, <%= var(ctx, :py_size) %>;
-      loop5:
-        st.global.<%= var(ctx, :f) %> [%cd2], <%= var(ctx, :padding) %>;
-        add.u64     %cd2, %cd2, <%= var(ctx, :float_size) %>;
-        sub.u32     %c0, %c0, 1;
-        setp.ne.u32 p, %c0, 0;
-        @p bra      loop5;
-      <% end %>
+    padding:
+      st.global.<%= var(ctx, :f) %> [%cd2], <%= var(ctx, :padding) %>;
+      ret;
     <% end %>
     """
   end

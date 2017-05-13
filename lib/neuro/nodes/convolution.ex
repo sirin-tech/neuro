@@ -2,6 +2,10 @@ defmodule Neuro.Nodes.Convolution do
   alias Neuro.Nodes.Base
   use Base
 
+  def __batch__(%{assigns: %{vars: vars}}) do
+    [{"conv", {vars.ox, vars.oy, vars.oz}, {1, 1, 1}, [:w]}]
+  end
+
   def __ptx__(_node) do
     """
     .version 5.0

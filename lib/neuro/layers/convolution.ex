@@ -120,8 +120,8 @@ defmodule Neuro.Layers.Convolution do
   end
 
   defp pooling(nil), do: false
-  defp pooling(n) when is_integer(n), do: %{pooling_size: {n, n}}
-  defp pooling({_, _} = p), do: %{pooling_size: p}
+  defp pooling(n) when is_integer(n), do: %{pooling: {n, n}}
+  defp pooling({_, _} = p), do: %{pooling: p}
   defp pooling(p) when is_map(p), do: p
   defp pooling(list) when is_list(list) do
     case Keyword.keyword?(list) do
