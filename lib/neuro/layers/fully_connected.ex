@@ -15,8 +15,9 @@ defmodule Neuro.Layers.FullyConnected do
   end
 
   def __graph__(graph) do
-    vars = graph.assigns.options
-    graph = graph |> chain(:fully, Nodes.FullyConnected, vars)
+    vars = graph.assigns.vars
+    opts = graph.assigns.options
+    graph = graph |> chain(:fully, Nodes.FullyConnected, opts)
     graph = case Map.get(vars, :softmax, false) do
       false   -> graph
       _softmax -> graph
