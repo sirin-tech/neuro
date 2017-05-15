@@ -20,33 +20,16 @@ defmodule Neuro.Layers.Convolution do
 
   def __graph__(graph) do
     vars = graph.assigns.vars
-    {graph, next} = case vars.padding do
-      false ->
-        {graph, :input}
-      padding ->
-        graph = graph
-                |> add(:padding, Nodes.Padding, padding)
-                |> link(:input, {:padding, :input})
-        {graph, {:padding, :output}}
+    graph = case vars.padding do
+      false   -> graph
+      padding -> graph |> chain(:padding, Nodes.Padding, padding)
     end
-    graph = graph
-            |> add(:conv, Nodes.Convolution, vars.conv)
-            |> link(next, {:conv, :input})
-    {graph, next} = case vars.pooling do
-      false ->
-        {graph, {:conv, :output}}
-      pooling ->
-        graph = graph
-                |> add(:pooling, Nodes.Pooling, pooling)
-                |> link({:conv, :output}, {:pooling, :input})
-        {graph, {:pooling, :output}}
+    graph = graph |> chain(:conv, Nodes.Convolution, vars.conv)
+    graph = case vars.pooling do
+      false   -> graph
+      pooling -> graph |> chain(:pooling, Nodes.Pooling, pooling)
     end
-    graph
-    |> link(next, :output)
-  end
-
-  def __run__(_) do
-    [:conv]
+    graph |> close()
   end
 
   defp vars(opts) do

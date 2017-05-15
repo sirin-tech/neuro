@@ -19,9 +19,11 @@ defmodule Neuro.Nodes.Base do
     end
   end
 
+  def input_type(%{z: 1, x: x, y: 1, f: f}), do: {f, x}
   def input_type(%{z: 1, x: x, y: y, f: f}), do: {f, {x, y}}
   def input_type(%{z: z, x: x, y: y, f: f}), do: {f, {x, y, z}}
 
+  def output_type(%{oz: 1, ox: x, oy: 1, f: f}), do: {f, x}
   def output_type(%{oz: 1, ox: x, oy: y, f: f}), do: {f, {x, y}}
   def output_type(%{oz: z, ox: x, oy: y, f: f}), do: {f, {x, y, z}}
 
@@ -29,6 +31,13 @@ defmodule Neuro.Nodes.Base do
   def triple_size({_, _, _} = tuple), do: tuple
   def triple_size(x) when is_integer(x), do: {x, x, 1}
   def triple_size(_) do
+    raise CompileError, description: "Invalid size specified"
+  end
+
+  def plane_size({x, y}),               do: x * y
+  def plane_size({x, y, z}),            do: x * y * z
+  def plane_size(x) when is_integer(x), do: x
+  def plane_size(_) do
     raise CompileError, description: "Invalid size specified"
   end
 
@@ -43,9 +52,16 @@ defmodule Neuro.Nodes.Base do
     f = assigns.vars.f
     x = assigns.vars.x
     y = assigns.vars.y
-    case assigns.vars.z do
-      1 -> {{f, x}, {f, y}}
-      z -> {{f, x}, {f, y}, {f, z}}
+    z = assigns.vars.z
+    cond do
+      z == 1 and y == 1 -> {f, x}
+      z == 1            -> {{f, x}, {f, y}}
+      true              -> {{f, x}, {f, y}, {f, z}}
     end
+  end
+
+  def activation(:relu), do: Neuro.Nodes.Activation.Relu
+  def activation(_) do
+    raise CompileError, description: "Invalid activation function"
   end
 end

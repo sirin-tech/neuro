@@ -86,7 +86,7 @@ defmodule Neuro.Nodes.Convolution do
       setp.ne.u32   p, %c1, 0;
       @p bra        loop_y;
 
-      // include ctx, var(ctx, :activation), in: "f0", pred: "p"
+      <%= include ctx, var(ctx, :activation), in: "f0", pred: "p" %>
       st.global.<%= var(ctx, :f) %> [%cd3], %f0;
       ret;
     <% end %>
@@ -98,7 +98,7 @@ defmodule Neuro.Nodes.Convolution do
     {wx, wy, wz} = opts |> Map.get(:kernel_size) |> Base.triple_size()
     {sx, sy}     = opts |> Map.get(:stride) |> Base.stride()
     float_size   = opts |> Map.get(:float_size) |> Base.float_size()
-    activation   = opts |> Map.get(:activation, :relu) |> activation()
+    activation   = opts |> Map.get(:activation, :relu) |> Base.activation()
     f = "f#{float_size * 8}"
 
     ox = round((x - wx + sx) / sx)
@@ -111,10 +111,5 @@ defmodule Neuro.Nodes.Convolution do
       sx: sx, sy: sy,
       activation: activation,
       f: f, float_size: float_size}
-  end
-
-  defp activation(:relu), do: Neuro.Nodes.Activation.Relu
-  defp activation(_) do
-    raise CompileError, description: "Invalid activation function"
   end
 end
