@@ -8,7 +8,7 @@ defmodule Neuro.Nodes.FullyConnectedTest do
 
   describe "fully connected node" do
     test "simple fully connected" do
-      opts = %{size: 8, out_size: 2}
+      opts = [size: 8, out_size: 2]
       graph = Factory.new(%GPUNode{}, :fully, FullyConnected, opts)
 
       i = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
@@ -22,7 +22,7 @@ defmodule Neuro.Nodes.FullyConnectedTest do
     end
 
     test "relu activation" do
-      opts = %{size: 8, out_size: 2}
+      opts = [size: 8, out_size: 2]
       graph = Factory.new(%GPUNode{}, :fully, FullyConnected, opts)
 
       i = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]

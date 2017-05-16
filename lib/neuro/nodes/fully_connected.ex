@@ -77,12 +77,12 @@ defmodule Neuro.Nodes.FullyConnected do
   end
 
   def vars(opts) do
-    x              = opts |> Map.get(:size) |> Base.plane_size()
-    ox             = opts |> Map.get(:out_size) |> Base.plane_size()
-    float_size     = opts |> Map.get(:float_size) |> Base.float_size()
-    activation     = opts |> Map.get(:activation, :relu) |> Base.activation()
-    weights_offset = opts |> Map.get(:weights_offset, 0)
-    biases_offset  = opts |> Map.get(:biases_offset, 0)
+    x              = opts |> Keyword.get(:size) |> Base.plane_size()
+    ox             = opts |> Keyword.get(:out_size) |> Base.plane_size()
+    float_size     = opts |> Keyword.get(:float_size) |> Base.float_size()
+    activation     = opts |> Keyword.get(:activation, :relu) |> Base.activation()
+    weights_offset = opts |> Keyword.get(:weights_offset, 0)
+    biases_offset  = opts |> Keyword.get(:biases_offset, 0)
     f = "f#{float_size * 8}"
 
     %{x: x, y: 1, z: 1,

@@ -58,10 +58,10 @@ defmodule Neuro.Nodes.Padding do
   end
 
   def vars(opts) do
-    {x, y, z} =  opts |> Map.get(:size) |> Base.triple_size()
-    {px, py} =   opts |> Map.get(:padding_size) |> get_padding_size()
-    padding =    opts |> Map.get(:padding, 0.0)
-    float_size = opts |> Map.get(:float_size) |> Base.float_size()
+    {x, y, z} =  opts |> Keyword.get(:size) |> Base.triple_size()
+    {px, py} =   opts |> Keyword.get(:padding_size) |> get_padding_size()
+    padding =    opts |> Keyword.get(:padding, 0.0)
+    float_size = opts |> Keyword.get(:float_size) |> Base.float_size()
     f = "f#{float_size * 8}"
 
     ox = x + px * 2

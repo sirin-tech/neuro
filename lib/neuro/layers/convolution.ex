@@ -21,16 +21,21 @@ defmodule Neuro.Layers.Convolution do
   def __graph__(graph) do
     vars = graph.assigns.vars
     graph = case vars.padding do
-      false   -> graph
-      padding -> graph |> chain(:padding, Nodes.Padding, padding)
+      false -> graph
+      _     -> graph |> chain(:padding, Nodes.Padding)
     end
-    graph = graph |> chain(:conv, Nodes.Convolution, vars.conv)
+    graph = graph |> chain(:conv, Nodes.Convolution)
     graph = case vars.pooling do
-      false   -> graph
-      pooling -> graph |> chain(:pooling, Nodes.Pooling, pooling)
+      false -> graph
+      _     -> graph |> chain(:pooling, Nodes.Pooling)
     end
     graph |> close()
   end
+
+  def __child_options__(:pooling, _, %{assigns: %{vars: %{pooling: opts}}}), do: opts
+  def __child_options__(:padding, _, %{assigns: %{vars: %{padding: opts}}}), do: opts
+  def __child_options__(:conv,    _, %{assigns: %{vars: %{conv: opts}}}), do: opts
+  def __child_options__(_, _, _), do: []
 
   defp vars(opts) do
     float_size = opts |> Map.get(:float_size) |> Base.float_size()
@@ -45,9 +50,9 @@ defmodule Neuro.Layers.Convolution do
   end
 
   defp process_padding(%{padding: p} = vars) do
-    with p when is_map(p) <- padding(p) do
-      p = Map.merge(p, %{size: {vars.x, vars.y, vars.z},
-                         float_size: vars.float_size})
+    with p when is_list(p) <- padding(p) do
+      p = Keyword.merge(p, size: {vars.x, vars.y, vars.z},
+                           float_size: vars.float_size)
       vars
       |> Map.put(:padding, p)
       |> Map.put(:padding_vars, Nodes.Padding.vars(p))
@@ -62,24 +67,28 @@ defmodule Neuro.Layers.Convolution do
   defp process_conv(%{padding_vars: pv} = vars) do
     c = vars
         |> Map.drop([:padding, :padding_vars, :pooling])
-        |> Map.merge(%{size: {pv.ox, pv.oy, pv.oz},
-                       float_size: vars.float_size})
+        |> Enum.into([])
+        |> Keyword.merge(size: {pv.ox, pv.oy, pv.oz},
+                         float_size: vars.float_size)
     vars
     |> Map.put(:conv, c)
     |> Map.put(:conv_vars, Nodes.Convolution.vars(c))
   end
   defp process_conv(vars) do
-    c = Map.merge(vars, %{size: {vars.x, vars.y, vars.z},
-                          float_size: vars.float_size})
+    # IO.inspect(vars)
+    c = vars
+        |> Enum.into([])
+        |> Keyword.merge(size: {vars.x, vars.y, vars.z},
+                         float_size: vars.float_size)
     vars
     |> Map.put(:conv, c)
     |> Map.put(:conv_vars, Nodes.Convolution.vars(c))
   end
 
   defp process_pooling(%{pooling: p, conv_vars: cv} = vars) do
-    with p when is_map(p) <- pooling(p) do
-      p = Map.merge(p, %{size: {cv.ox, cv.oy, cv.oz},
-                         float_size: vars.float_size})
+    with p when is_list(p) <- pooling(p) do
+      p = Keyword.merge(p, size: {cv.ox, cv.oy, cv.oz},
+                           float_size: vars.float_size)
       vars
       |> Map.put(:pooling, p)
       |> Map.put(:pooling_vars, Nodes.Pooling.vars(p))
@@ -92,24 +101,18 @@ defmodule Neuro.Layers.Convolution do
   end
 
   defp padding(nil), do: false
-  defp padding(n) when is_integer(n), do: %{padding_size: {n, n}}
-  defp padding({_, _} = p), do: %{padding_size: p}
-  defp padding(p) when is_map(p), do: p
-  defp padding(list) when is_list(list) do
-    case Keyword.keyword?(list) do
-      true -> list |> Enum.into(%{})
-      _    -> false
-    end
+  defp padding(n) when is_integer(n), do: [padding_size: {n, n}]
+  defp padding({_, _} = p), do: [padding_size: p]
+  defp padding(p) when is_list(p) do
+    if Keyword.keyword?(p), do: p, else: false
   end
+  defp padding(_), do: false
 
   defp pooling(nil), do: false
-  defp pooling(n) when is_integer(n), do: %{pooling: {n, n}}
-  defp pooling({_, _} = p), do: %{pooling: p}
-  defp pooling(p) when is_map(p), do: p
-  defp pooling(list) when is_list(list) do
-    case Keyword.keyword?(list) do
-      true -> list |> Enum.into(%{})
-      _    -> false
-    end
+  defp pooling(n) when is_integer(n), do: [pooling: {n, n}]
+  defp pooling({_, _} = p), do: [pooling: p]
+  defp pooling(p) when is_list(p) do
+    if Keyword.keyword?(p), do: p, else: false
   end
+  defp pooling(_), do: false
 end

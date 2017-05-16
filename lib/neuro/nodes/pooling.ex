@@ -75,10 +75,10 @@ defmodule Neuro.Nodes.Pooling do
   end
 
   def vars(opts) do
-    {x, y, z} =  opts |> Map.get(:size) |> Base.triple_size()
-    {px, py} =   opts |> Map.get(:pooling) |> get_pooling_size()
-    {sx, sy} =   opts |> Map.get(:stride) |> Base.stride()
-    float_size = opts |> Map.get(:float_size) |> Base.float_size()
+    {x, y, z} =  opts |> Keyword.get(:size) |> Base.triple_size()
+    {px, py} =   opts |> Keyword.get(:pooling) |> get_pooling_size()
+    {sx, sy} =   opts |> Keyword.get(:stride) |> Base.stride()
+    float_size = opts |> Keyword.get(:float_size) |> Base.float_size()
     f = "f#{float_size * 8}"
 
     ox = round((x - px + sx) / sx)

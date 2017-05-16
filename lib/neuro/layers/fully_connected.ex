@@ -16,16 +16,18 @@ defmodule Neuro.Layers.FullyConnected do
 
   def __graph__(graph) do
     vars = graph.assigns.vars
-    opts = graph.assigns.options
-    graph = graph |> chain(:fully, Nodes.FullyConnected, opts)
+    graph = graph |> chain(:fully, Nodes.FullyConnected)
     graph = case Map.get(vars, :softmax, false) do
-      false   -> graph
+      false    -> graph
       _softmax -> graph
     end
     graph |> close()
   end
 
+  def __child_options__(:fully, _, %{assigns: %{options: opts}}), do: opts
+  def __child_options__(_, _, _), do: []
+
   defp vars(opts) do
-    Nodes.FullyConnected.vars(opts)
+    Nodes.FullyConnected.vars(opts |> Enum.into([]))
   end
 end

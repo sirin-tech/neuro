@@ -94,11 +94,11 @@ defmodule Neuro.Nodes.Convolution do
   end
 
   def vars(opts) do
-    {x, y, z}    = opts |> Map.get(:size) |> Base.triple_size()
-    {wx, wy, wz} = opts |> Map.get(:kernel_size) |> Base.triple_size()
-    {sx, sy}     = opts |> Map.get(:stride) |> Base.stride()
-    float_size   = opts |> Map.get(:float_size) |> Base.float_size()
-    activation   = opts |> Map.get(:activation, :relu) |> Base.activation()
+    {x, y, z}    = opts |> Keyword.get(:size) |> Base.triple_size()
+    {wx, wy, wz} = opts |> Keyword.get(:kernel_size) |> Base.triple_size()
+    {sx, sy}     = opts |> Keyword.get(:stride) |> Base.stride()
+    float_size   = opts |> Keyword.get(:float_size) |> Base.float_size()
+    activation   = opts |> Keyword.get(:activation, :relu) |> Base.activation()
     f = "f#{float_size * 8}"
 
     ox = round((x - wx + sx) / sx)

@@ -8,7 +8,7 @@ defmodule Neuro.Nodes.ConvolutionTest do
 
   describe "convolution node" do
     test "simple convolution" do
-      opts = %{size: {4, 4}, kernel_size: {2, 2, 2}}
+      opts = [size: {4, 4}, kernel_size: {2, 2, 2}]
       graph = Factory.new(%GPUNode{}, :conv, Convolution, opts)
 
       i = [0.1, 0.2, 0.3, 0.4,
@@ -37,7 +37,7 @@ defmodule Neuro.Nodes.ConvolutionTest do
     end
 
     test "relu activation" do
-      opts = %{size: {4, 4}, kernel_size: {2, 2, 2}}
+      opts = [size: {4, 4}, kernel_size: {2, 2, 2}]
       graph = Factory.new(%GPUNode{}, :conv, Convolution, opts)
 
       i = [0.1, 0.2, 0.3, 0.4,

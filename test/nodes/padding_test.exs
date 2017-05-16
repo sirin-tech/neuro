@@ -8,7 +8,7 @@ defmodule Neuro.Nodes.PaddingTest do
 
   describe "padding node" do
     test "simple padding" do
-      opts = %{size: {3, 3}, padding_size: {1, 1}, padding: 1.0}
+      opts = [size: {3, 3}, padding_size: {1, 1}, padding: 1.0]
       node = Factory.new(%GPUNode{}, :node, Padding, opts)
 
       i = [0.1, 0.2, 0.3,

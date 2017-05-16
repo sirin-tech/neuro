@@ -30,15 +30,15 @@ defmodule Neuro.Nodes.Base do
   def triple_size({x, y}), do: {x, y, 1}
   def triple_size({_, _, _} = tuple), do: tuple
   def triple_size(x) when is_integer(x), do: {x, x, 1}
-  def triple_size(_) do
-    raise CompileError, description: "Invalid size specified"
+  def triple_size(x) do
+    raise CompileError, description: "Invalid size specified: #{inspect x}"
   end
 
   def plane_size({x, y}),               do: x * y
   def plane_size({x, y, z}),            do: x * y * z
   def plane_size(x) when is_integer(x), do: x
-  def plane_size(_) do
-    raise CompileError, description: "Invalid size specified"
+  def plane_size(x) do
+    raise CompileError, description: "Invalid size specified: #{inspect x}"
   end
 
   def stride({_, _} = tuple), do: tuple

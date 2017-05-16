@@ -8,7 +8,7 @@ defmodule Neuro.Nodes.PoolingTest do
 
   describe "pooling node" do
     test "pooling: 2x2, stride: 2x2" do
-      opts = %{size: {4, 4}, pooling: {2, 2}, stride: {2, 2}}
+      opts = [size: {4, 4}, pooling: {2, 2}, stride: {2, 2}]
       node = Factory.new(%GPUNode{}, :node, Pooling, opts)
 
       i = [0.1, 0.2, 0.3, 0.4,
@@ -25,7 +25,7 @@ defmodule Neuro.Nodes.PoolingTest do
     end
 
     test "pooling: 2x2, stride: 1x1" do
-      opts = %{size: {4, 4}, pooling: 2, stride: 1}
+      opts = [size: {4, 4}, pooling: 2, stride: 1]
       node = Factory.new(%GPUNode{}, :node, Pooling, opts)
 
       i = [0.1, 0.2, 0.3, 0.4,
