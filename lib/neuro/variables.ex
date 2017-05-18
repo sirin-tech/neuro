@@ -38,6 +38,10 @@ defmodule Neuro.Variables do
     GenServer.call(pid, :data)
   end
 
+  def share(pid) do
+    GenServer.call(pid, :share)
+  end
+
   def vars(pid) do
     GenServer.call(pid, :vars)
   end
@@ -65,7 +69,7 @@ defmodule Neuro.Variables do
 
   def handle_call(:offsets, _from, st) do
     offsets = st.extracts
-              |> Enum.map(fn {k, {o, _, _}} -> {k, o} end)
+              |> Enum.map(&collect_offsets/1)
               |> Enum.into(%{})
     {:reply, {:ok, offsets}, st}
   end
@@ -85,6 +89,11 @@ defmodule Neuro.Variables do
     {:reply, {:ok, nil}, st}
   end
 
+  def handle_call(:share, _from, st) do
+    result = Cuda.memory_share(st.cuda, st.ref)
+    {:reply, result, st}
+  end
+
   def handle_call(:vars, _from, %{ref: ref} = st) when not is_nil(ref) do
     result = with {:ok, data} <- Cuda.memory_read(st.cuda, ref) do
       vars = st.extracts |> Enum.reduce(%{}, fn {name, {o, s, t}}, vars ->
@@ -94,6 +103,17 @@ defmodule Neuro.Variables do
       {:ok, vars}
     end
     {:reply, result, st}
+  end
+
+  defp collect_offsets({k, {o, _, t}}) when is_map(t) do
+    {o, _} = Enum.reduce(t, {%{}, 0}, fn {name, type}, {map, offset} ->
+      size = Pin.type_size(type)
+      {Map.put(map, name, o + offset), offset + size}
+    end)
+    {k, o}
+  end
+  defp collect_offsets({k, {o, _, _}}) do
+    {k, o}
   end
 
   defp load_vars(vars, st) do
@@ -106,13 +126,17 @@ defmodule Neuro.Variables do
       _, error ->
         error
     end)
-    unload = case st.ref do
-      nil -> :ok
-      ref -> Cuda.memory_unload(st.cuda, ref)
-    end
-    with :ok <- unload,
-         {:ok, ref} <- Cuda.memory_load(st.cuda, bin) do
-      {:ok, %{st | ref: ref, extracts: extracts}}
+    if byte_size(bin) > 0 do
+      unload = case st.ref do
+        nil -> :ok
+        ref -> Cuda.memory_unload(st.cuda, ref)
+      end
+      with :ok <- unload,
+           {:ok, ref} <- Cuda.memory_load(st.cuda, bin) do
+        {:ok, %{st | ref: ref, extracts: extracts}}
+      end
+    else
+      {:ok, %{st | ref: nil, extracts: extracts}}
     end
   end
 end

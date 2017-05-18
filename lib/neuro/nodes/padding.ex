@@ -1,9 +1,10 @@
 defmodule Neuro.Nodes.Padding do
   alias Neuro.Nodes.Base
+  alias Neuro.Nodes.Convolution
   use Base
 
   def __batch__(%{assigns: %{vars: vars}}) do
-    [{"padding", {vars.ox, vars.oy, 1}, {1, 1, 1}, []}]
+    [{"padding", vars.block, vars.grid, []}]
   end
 
   def __ptx__(_node) do
@@ -14,13 +15,14 @@ defmodule Neuro.Nodes.Padding do
 
     <%= defkernel ctx, "padding" do %>
       .reg .u64   %cd<3>;
-      .reg .u64   %tidx;
+      .reg .u64   %tidx, %tidz;
       .reg .u32   %tidy;
       .reg .<%= var(ctx, :f) %> %f;
       .reg .pred  p;
 
-      cvt.u64.u32   %tidx, %tid.x;
-      mov.u32       %tidy, %tid.y;
+      cvt.u64.u32   %tidx, %ctaid.z;
+      mov.u32       %tidy, %ctaid.y;
+      cvt.u64.u32   %tidz, %ctaid.x;
 
       // padding if x < px || x >= px + ix || y < py || y >= py + iy
       setp.lo.u64 p, %tidx, <%= var(ctx, :px) %>;
@@ -30,19 +32,21 @@ defmodule Neuro.Nodes.Padding do
 
       ld.param.u64  %cd0, [pins];
 
-      // (%cd2) output.offset = output + (tid.x + tid.y * ox) * float_size
-      mad.wide.u32  %cd1, %tidy, <%= var(ctx, :ox) %>, %tidx;
-      mad.lo.u64    %cd2, %cd1, <%= var(ctx, :float_size) %>, %cd0;
+      // (%cd2) output.offset = output + (tid.x + tid.y * ox + tid.z * ox * oy) * float_size
+      mad.wide.u32  %cd2, %tidy, <%= var(ctx, :ox) %>, %tidx;
+      mad.lo.u64    %cd2, %tidz, <%= var(ctx, :ox) * var(ctx, :oy) %>, %cd2;
+      mad.lo.u64    %cd2, %cd2, <%= var(ctx, :float_size) %>, %cd0;
       <%= if offset(ctx, :output) > 0 do %>
         add.u64     %cd2, %cd2, <%= offset(ctx, :output) %>;
       <% end %>
 
       @p bra padding;
-      // (%cd1) input.offset  = input + (tid.x - px + (tid.y - py) * x) * float_size
-      sub.u64 %tidx, %tidx, <%= var(ctx, :px) %>;
-      sub.u32 %tidy, %tidy, <%= var(ctx, :py) %>;
-      mad.wide.u32 %cd1, %tidy, <%= var(ctx, :x) %>, %tidx;
-      mad.lo.u64 %cd1, %cd1, <%= var(ctx, :float_size) %>, %cd0;
+      // (%cd1) input.offset  = input + (tid.x - px + (tid.y - py) * x + tid.z * x * y) * float_size
+      sub.u64       %tidx, %tidx, <%= var(ctx, :px) %>;
+      sub.u32       %tidy, %tidy, <%= var(ctx, :py) %>;
+      mad.wide.u32  %cd1, %tidy, <%= var(ctx, :x) %>, %tidx;
+      mad.lo.u64    %cd1, %tidz, <%= vars(ctx, :x) * var(ctx, :y) %>, %cd1;
+      mad.lo.u64    %cd1, %cd1, <%= var(ctx, :float_size) %>, %cd0;
       <%= if offset(ctx, :input) > 0 do %>
         add.u64     %cd1, %cd1, <%= offset(ctx, :input) %>;
       <% end %>
@@ -57,7 +61,7 @@ defmodule Neuro.Nodes.Padding do
     """
   end
 
-  def vars(opts) do
+  def vars(opts, %{gpu_info: info}) do
     {x, y, z} =  opts |> Keyword.get(:size) |> Base.triple_size()
     {px, py} =   opts |> Keyword.get(:padding_size) |> get_padding_size()
     padding =    opts |> Keyword.get(:padding, 0.0)
@@ -68,13 +72,13 @@ defmodule Neuro.Nodes.Padding do
     oy = y + py * 2
     oz = z
 
-    py_size = py * ox
+    {block, grid} = Convolution.cta(ox, oy, oz, info)
 
     %{x: x, y: y, z: z,
       ox: ox, oy: oy, oz: oz,
       px: px, py: py, padding: padding,
-      f: f, py_size: py_size,
-      float_size: float_size}
+      grid: grid, block: block,
+      f: f, float_size: float_size}
   end
 
   defp get_padding_size({_, _} = tuple), do: tuple

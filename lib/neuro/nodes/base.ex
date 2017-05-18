@@ -1,13 +1,28 @@
 defmodule Neuro.Nodes.Base do
-  defmacro __using__(_opts) do
+  defmodule Helpers do
+    def shared_offset(ctx, name) do
+      {id, _} = ctx.node.id
+      ctx.assigns.shared_offsets[name][id]
+    end
+  end
+
+  defmacro __using__(opts) do
+    proto = Keyword.get(opts, :proto, Cuda.Graph.GPUNode)
     quote do
-      use Cuda.Graph.GPUNode
+      use unquote(proto)
       import unquote(__MODULE__)
 
-      def vars(_), do: %{}
+      def vars(_opts, _env), do: %{}
 
-      def __assigns__(opts, _env) do
-        %{vars: vars(opts)}
+      def __assigns__(opts, env) do
+        float_size = opts |> Keyword.get(:float_size) |> float_size()
+        f = "f#{float_size * 8}"
+        vars = opts
+               |> Keyword.merge(float_size: float_size, f: f)
+               |> vars(env)
+               |> Enum.into(%{})
+               |> Map.merge(%{float_size: float_size, f: f})
+        %{vars: vars, helpers: [Neuro.Nodes.Base.Helpers]}
       end
 
       def __pins__(assigns) do
@@ -15,7 +30,7 @@ defmodule Neuro.Nodes.Base do
          output(:output, output_type(assigns.vars))]
       end
 
-      defoverridable __assigns__: 2, __pins__: 1, vars: 1
+      defoverridable __pins__: 1, vars: 2
     end
   end
 

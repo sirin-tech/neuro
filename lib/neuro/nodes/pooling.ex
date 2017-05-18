@@ -1,9 +1,10 @@
 defmodule Neuro.Nodes.Pooling do
   alias Neuro.Nodes.Base
+  alias Neuro.Nodes.Convolution
   use Base
 
   def __batch__(%{assigns: %{vars: vars}}) do
-    [{"pooling", {vars.ox, vars.oy, vars.oz}, {1, 1, 1}, []}]
+    [{"pooling", vars.block, vars.grid, []}]
   end
 
   def __ptx__(_node) do
@@ -20,9 +21,9 @@ defmodule Neuro.Nodes.Pooling do
       .reg .pred  first;
 
       ld.param.u64  %cd0, [pins];
-      mov.u32       %tidx, %tid.x;
-      mov.u32       %tidy, %tid.y;
-      cvt.u64.u32   %tidz, %tid.z;
+      mov.u32       %tidx, %ctaid.z;
+      mov.u32       %tidy, %ctaid.y;
+      cvt.u64.u32   %tidz, %ctaid.x;
 
       // (%cd1) input.offset = input + (tid.x * sx + tid.y * sy * ix + tid.z * ix * iy) * float_size
       mul.wide.u32  %cd1, %tidx, <%= var(ctx, :sx) %>;
@@ -74,7 +75,7 @@ defmodule Neuro.Nodes.Pooling do
     """
   end
 
-  def vars(opts) do
+  def vars(opts, %{gpu_info: info}) do
     {x, y, z} =  opts |> Keyword.get(:size) |> Base.triple_size()
     {px, py} =   opts |> Keyword.get(:pooling) |> get_pooling_size()
     {sx, sy} =   opts |> Keyword.get(:stride) |> Base.stride()
@@ -85,10 +86,13 @@ defmodule Neuro.Nodes.Pooling do
     oy = round((y - py + sy) / sy)
     oz = z
 
+    {block, grid} = Convolution.cta(ox, oy, oz, info)
+
     %{x: x, y: y, z: z,
       ox: ox, oy: oy, oz: oz,
       px: px, py: py,
       sx: sx, sy: sy,
+      grid: grid, block: block,
       f: f, float_size: float_size}
   end
 

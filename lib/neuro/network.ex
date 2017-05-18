@@ -21,7 +21,7 @@ defmodule Neuro.Network do
 
       def start_link(opts \\ []) do
         {name, opts} = Keyword.pop(opts, :name, __MODULE__)
-        GenServer.start_link(__MODULE__, opts, name: name)
+        Supervisor.start_link(__MODULE__, opts, name: name)
       end
 
       # Cuda.Graph behaviour
@@ -49,18 +49,30 @@ defmodule Neuro.Network do
         [size: output,
          float_size: Keyword.get(opts, :float_size, unquote(float_size))]
       end
-      def __child_options__(_id, _module, _graph), do: []
+      def __child_options__(_id, _module, _graph) do
+        []
+      end
 
       def init(opts) do
-        opts = Keyword.merge(opts, network: __MODULE__, vars: unquote(@vars))
+        opts = Keyword.merge(opts, network: __MODULE__,
+                                   vars: unquote(@vars),
+                                   name: __MODULE__.Worker)
         children = [
-          worker(Neuro.Variables, [name: unquote(@vars)]),
-          worker(Neuro.Worker, opts)
+          worker(Neuro.Variables, [[name: unquote(@vars)]]),
+          worker(Neuro.Worker, [opts])
         ]
-        supervise(children, startegy: :one_for_one)
+        supervise(children, strategy: :one_for_one)
       end
 
       def graph(graph), do: graph
+
+      def run(input) do
+        Neuro.Worker.run(__MODULE__.Worker, input)
+      end
+
+      def gpu_info() do
+        Neuro.Worker.gpu_info(__MODULE__.Worker)
+      end
 
       defoverridable graph: 1
     end

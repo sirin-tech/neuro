@@ -7,9 +7,9 @@ defmodule Neuro.Test.NodesHelpers do
     v |> List.flatten |> Enum.reduce(<<>>, & &2 <> <<&1::float-little-32>>)
   end
 
-  defp round!(l) when is_list(l), do: Enum.map(l, &round!/1)
-  defp round!(f) when is_float(f), do: Float.round(f, 1)
-  defp round!(x), do: x
+  def round!(l) when is_list(l), do: Enum.map(l, &round!/1)
+  def round!(f) when is_float(f), do: Float.round(f, 1)
+  def round!(x), do: x
 
   def run(node, inputs, args \\ %{}) do
     args = args |> Enum.map(fn
@@ -34,8 +34,8 @@ defmodule Neuro.Test.NodesHelpers do
         acc
     end)
 
-    opts = [cuda: cuda, args: args]
-    with {:ok, outputs} <- Runner.run(node, inputs, opts) do
+    with {:ok, node}    <- Runner.load(node, cuda: cuda),
+         {:ok, outputs} <- Runner.run(node, inputs, cuda: cuda, args: args) do
       outputs
       |> Enum.map(fn {k, v} -> {k, round!(v)} end)
       |> Enum.into(%{})
