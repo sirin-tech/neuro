@@ -20,19 +20,7 @@ defmodule Neuro.Nodes.FullyConnected do
       ld.param.u64 	%cd0, [pins];
     	ld.param.u64 	%cd3, [shared];
 
-      cvt.u64.u32   %x, %tid.x;
-      <%= if :by in var(ctx, :cta_shape) do %>
-        cvt.u64.u32 %cd4, %tid.y;
-        mad.lo.u64  %x, %cd4, <%= var(ctx, :max_x) %>, %x;
-      <% end %>
-      <%= if :bz in var(ctx, :cta_shape) do %>
-        cvt.u64.u32 %cd5, %tid.z;
-        mad.lo.u64  %x, %cd4, <%= var(ctx, :max_x) * var(ctx, :max_y) %>, %x;
-      <% end %>
-      <%= if :gx in var(ctx, :cta_shape) do %>
-        cvt.u64.u32 %cd4, %ctaid.x;
-        mad.lo.u64  %x, %cd4, <%= var(ctx, :max_x) * var(ctx, :max_y) * var(ctx, :max_z) %>, %x;
-      <% end %>
+      cvt.u64.u32   %x, %ctaid.x;
 
       // (%cd1) weight.offset = weight + tid.x * ix * float_size
       mad.lo.u64   %cd1, %x, <%= var(ctx, :x) * var(ctx, :float_size) %>, %cd3;
@@ -91,29 +79,18 @@ defmodule Neuro.Nodes.FullyConnected do
     activation     = opts |> Keyword.get(:activation, :relu) |> Base.activation()
     f = "f#{float_size * 8}"
 
-    {max_x, max_y, max_z} = info[:max_block]
-    {block, grid, cta_shape} = cond do
-      ox <= max_x ->
-        {{ox, 1, 1}, {1, 1, 1}, ~w(bx)a}
-      ox <= max_x * max_y ->
-        by = div(ox, max_x) + (if rem(ox, max_x) > 0, do: 1, else: 0)
-        {{max_x, by, 1}, {1, 1, 1}, ~w(bx by)a}
-      ox <= max_x * max_y * max_z ->
-        b = max_x * max_y
-        bz = div(ox, b) + (if rem(ox, b) > 0, do: 1, else: 0)
-        {{max_x, max_y, bz}, {1, 1, 1}, ~w(bx by bz)a}
-      true ->
-        b = max_x * max_y * max_z
-        gx = div(ox, b) + (if rem(ox, b) > 0, do: 1, else: 0)
-        {{max_x, max_y, max_z}, {gx, 1, 1}, ~w(bx by bz gx)a}
+    {max_x, _, _} = info[:max_block]
+    if ox > max_x do
+      raise RuntimeError, message: "Maximum allowed layer size is #{max_x}"
     end
+    block = {1, 1, 1}
+    grid  = {ox, 1, 1}
 
     %{x: x, y: 1, z: 1,
       ox: ox, oy: 1, oz: 1,
       neurons: ox, weights: x * ox,
       activation: activation,
-      block: block, grid: grid, cta_shape: cta_shape,
-      max_x: max_x, max_y: max_y, max_z: max_z,
+      block: block, grid: grid,
       f: f, float_size: float_size}
   end
 end

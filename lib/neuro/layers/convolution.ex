@@ -104,7 +104,7 @@ defmodule Neuro.Layers.Convolution do
   defp padding(_), do: false
 
   defp pooling(nil), do: false
-  defp pooling(n) when is_integer(n), do: [pooling: {n, n}]
+  defp pooling(n) when is_integer(n), do: [pooling: {n, n}, stride: {n, n}]
   defp pooling({_, _} = p), do: [pooling: p, stride: p]
   defp pooling(p) when is_list(p) do
     if Keyword.keyword?(p), do: p, else: false
