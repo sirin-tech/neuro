@@ -1,4 +1,4 @@
-defmodule Neuro.Worker do
+defmodule Neuro.TrainingWorker do
   use GenServer
   alias Neuro.Variables
   alias Cuda.Graph
@@ -51,6 +51,8 @@ defmodule Neuro.Worker do
          env = %Cuda.Env{gpu_info: st.info},
          # create new graph
          %{} = graph <- Factory.new(%Graph{}, :network, st.module, [], env),
+         {:ok, _reversed} <- {:ok, graph}, # reverse graph here
+         %{} = training_graph <- graph, # make training graph here
          ctx = %Context{},
          # we need to precompile graph to calculate CTA parameters and
          # shared variables sizes (weights and biases)
@@ -65,7 +67,7 @@ defmodule Neuro.Worker do
          # retrieve shared variables offset for compilation
          {:ok, offsets} <- Variables.offsets(st.vars),
          # compile sources into cubin
-         {:ok, graph} <- Unit.compile(graph, %{ctx | assigns: %{shared_offsets: offsets}}),
+         {:ok, graph} <- Unit.compile(training_graph, %{ctx | assigns: %{shared_offsets: offsets}}),
          # load compiled cubins into GPU
          {:ok, graph} <- Runner.load(graph, shared: shared, cuda: st.cuda) do
       {:ok, %{st | graph: graph, shared: shared, shared_offsets: offsets}}
