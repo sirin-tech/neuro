@@ -34,7 +34,7 @@ defmodule Neuro.NetworkTest do
         fc: [0.0, 0.0, 0.0]
       }
 
-      network = SimpleNetwork.start_link(weights: weights, biases: biases)
+      network = SimpleNetwork.start_link(shared: %{weights: weights, biases: biases})
 
       on_exit(fn ->
         Logger.configure(level: log_level)

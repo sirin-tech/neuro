@@ -10,7 +10,7 @@ defmodule Neuro.Nodes.Convolution do
   end
 
   def __ptx__(%{assings: %{back_propagation: true}}) do
-    inference_ptx() <> back_ptx()
+    back_ptx()
   end
   def __ptx__(_node) do
     inference_ptx()
@@ -118,8 +118,6 @@ defmodule Neuro.Nodes.Convolution do
     %{x: x, y: y, z: z,
       ox: ox, oy: oy, oz: oz,
       wx: wx, wy: wy, wz: wz,
-      neurons: wx * wy * wz,
-      weights: wx * wy * wz,
       sx: sx, sy: sy,
       grid: grid, block: block,
       activation: activation,

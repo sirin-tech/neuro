@@ -11,7 +11,7 @@ defmodule Neuro.Nodes.Pooling do
   end
 
   def __ptx__(%{assings: %{back_propagation: true}}) do
-    inference_ptx() <> back_ptx()
+    back_ptx()
   end
   def __ptx__(_node) do
     inference_ptx()

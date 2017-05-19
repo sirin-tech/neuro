@@ -11,7 +11,7 @@ defmodule Neuro.Nodes.Padding do
   end
 
   def __ptx__(%{assings: %{back_propagation: true}}) do
-    inference_ptx() <> back_ptx()
+    back_ptx()
   end
   def __ptx__(_node) do
     inference_ptx()
@@ -55,7 +55,7 @@ defmodule Neuro.Nodes.Padding do
       sub.u64       %tidx, %tidx, <%= var(ctx, :px) %>;
       sub.u32       %tidy, %tidy, <%= var(ctx, :py) %>;
       mad.wide.u32  %cd1, %tidy, <%= var(ctx, :x) %>, %tidx;
-      mad.lo.u64    %cd1, %tidz, <%= vars(ctx, :x) * var(ctx, :y) %>, %cd1;
+      mad.lo.u64    %cd1, %tidz, <%= var(ctx, :x) * var(ctx, :y) %>, %cd1;
       mad.lo.u64    %cd1, %cd1, <%= var(ctx, :float_size) %>, %cd0;
       <%= if offset(ctx, :input) > 0 do %>
         add.u64     %cd1, %cd1, <%= offset(ctx, :input) %>;

@@ -55,11 +55,11 @@ defmodule Neuro.Network do
 
       def init(opts) do
         opts = Keyword.merge(opts, network: __MODULE__,
-                                   vars: unquote(@vars),
+                                   shared_pid: unquote(@vars),
                                    name: __MODULE__.Worker)
         children = [
           worker(Cuda.Shared, [[name: unquote(@vars)]]),
-          worker(Neuro.Worker, [opts])
+          worker(Cuda.Worker, [opts])
         ]
         supervise(children, strategy: :one_for_one)
       end
@@ -67,11 +67,11 @@ defmodule Neuro.Network do
       def graph(graph), do: graph
 
       def run(input) do
-        Neuro.Worker.run(__MODULE__.Worker, input)
+        Cuda.Worker.run(__MODULE__.Worker, input)
       end
 
       def gpu_info() do
-        Neuro.Worker.gpu_info(__MODULE__.Worker)
+        Cuda.Worker.gpu_info(__MODULE__.Worker)
       end
 
       defoverridable graph: 1
@@ -81,8 +81,17 @@ defmodule Neuro.Network do
   defmacro __before_compile__(env) do
     pins = env.module |> Module.get_attribute(@pins) |> Macro.escape
     quote do
-      def __pins__(_assigns) do
-        unquote(pins)
+      def __pins__(assigns) do
+        import Cuda.Graph.Node, only: [output_pin_types: 0]
+        case Keyword.get(assigns.options, :training) do
+          true ->
+            pins = unquote(pins)
+            output = pins |> Enum.find(& &1.type in output_pin_types())
+            reply = %{output | name: :reply, type: :input}
+            pins ++ [reply]
+          _ ->
+            unquote(pins)
+        end
       end
     end
   end

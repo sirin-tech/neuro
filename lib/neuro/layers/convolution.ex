@@ -57,8 +57,16 @@ defmodule Neuro.Layers.Convolution do
            |> process_conv(env)
            |> process_pooling(env)
            |> Map.drop([:size])
-    conv = Map.get(vars, :conv_vars)
-    Map.merge(vars, Map.take(conv, ~w(weights neurons)a))
+    # Map.get(vars, :conv_vars)
+    # Map.merge(vars, Map.take(conv, ~w(weights neurons)a))
+    # IO.inspect(vars, label: "layer")
+    vars
+  end
+
+  def shared(vars) do
+    vars = vars.conv_vars
+    %{weights: {vars.f, vars.wx * vars.wy * vars.wz},
+      biases:  {vars.f, vars.wx * vars.wy * vars.wz}}
   end
 
   defp process_padding(%{padding: p} = vars, env) do
@@ -78,7 +86,7 @@ defmodule Neuro.Layers.Convolution do
 
   defp process_conv(%{padding_vars: pv} = vars, env) do
     c = vars
-        |> Map.drop([:padding, :padding_vars, :pooling])
+        |> Map.drop([:padding, :padding_vars, :pooling, :shared])
         |> Enum.into([])
         |> Keyword.merge(size: {pv.ox, pv.oy, pv.oz},
                          float_size: vars.float_size)
@@ -88,6 +96,7 @@ defmodule Neuro.Layers.Convolution do
   end
   defp process_conv(vars, env) do
     c = vars
+        |> Map.drop([:padding, :padding_vars, :pooling, :shared])
         |> Enum.into([])
         |> Keyword.merge(size: {vars.x, vars.y, vars.z},
                          float_size: vars.float_size)

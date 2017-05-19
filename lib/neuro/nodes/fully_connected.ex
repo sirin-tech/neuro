@@ -10,7 +10,7 @@ defmodule Neuro.Nodes.FullyConnected do
   end
 
   def __ptx__(%{assings: %{back_propagation: true}}) do
-    inference_ptx() <> back_ptx()
+    back_ptx()
   end
   def __ptx__(_node) do
     inference_ptx()
@@ -110,7 +110,6 @@ defmodule Neuro.Nodes.FullyConnected do
 
     %{x: x, y: 1, z: 1,
       ox: ox, oy: 1, oz: 1,
-      neurons: ox, weights: x * ox,
       activation: activation,
       block: block, grid: grid,
       f: f, float_size: float_size}

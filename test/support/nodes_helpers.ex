@@ -1,6 +1,7 @@
 defmodule Neuro.Test.NodesHelpers do
   import Neuro.Test.CudaHelpers
   alias Cuda.Compiler.Unit
+  alias Cuda.Graph.Factory
   alias Cuda.Runner
 
   defp make_binary(v) when is_list(v) do
@@ -11,7 +12,7 @@ defmodule Neuro.Test.NodesHelpers do
   def round!(f) when is_float(f), do: Float.round(f, 1)
   def round!(x), do: x
 
-  def run(node, inputs, args \\ %{}) do
+  def run(proto, id, module, opts, inputs, args \\ %{}) do
     args = args |> Enum.map(fn
       {k, v} -> {k, v |> make_binary}
       x      -> x
@@ -19,10 +20,15 @@ defmodule Neuro.Test.NodesHelpers do
 
     l = Logger.level()
     Logger.configure(level: :error)
+
+    {:ok, cuda} = Cuda.start_link()
+    {:ok, info} = Cuda.device_info(cuda)
+
+    node = Factory.new(proto, id, module, opts, %Cuda.Env{gpu_info: info})
+
     {:ok, node} = Unit.compile(node, context())
     Logger.configure(level: l)
 
-    {:ok, cuda} = Cuda.start_link()
     args = Enum.reduce(args, %{}, fn
       {k, v}, acc ->
         with {:ok, m} <- Cuda.memory_load(cuda, v) do

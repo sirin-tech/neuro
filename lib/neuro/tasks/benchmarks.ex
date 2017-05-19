@@ -38,7 +38,7 @@ defmodule Mix.Tasks.Neuro.Benchmark do
       fc2:   random_data(10)
     }
 
-    {:ok, _} = MNISTNetwork.start_link(weights: weights, biases: biases)
+    {:ok, _} = MNISTNetwork.start_link(shared: %{weights: weights, biases: biases})
     i = random_data(28 * 28)
 
     n = 200

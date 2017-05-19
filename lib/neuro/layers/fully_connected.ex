@@ -28,4 +28,9 @@ defmodule Neuro.Layers.FullyConnected do
   def vars(opts, env) do
     Nodes.FullyConnected.vars(opts, env)
   end
+
+  def shared(vars) do
+    %{weights: {vars.f, vars.x * vars.ox},
+      biases:  {vars.f, vars.ox}}
+  end
 end
