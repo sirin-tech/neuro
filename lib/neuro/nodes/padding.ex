@@ -3,17 +3,27 @@ defmodule Neuro.Nodes.Padding do
   alias Neuro.Nodes.Convolution
   use Base
 
+  def __batch__(%{assigns: %{back_propagation: true, vars: vars}}) do
+    [{"back", vars.block, vars.grid, []}]
+  end
   def __batch__(%{assigns: %{vars: vars}}) do
-    [{"padding", vars.block, vars.grid, []}]
+    [{"inference", vars.block, vars.grid, []}]
   end
 
+  def __ptx__(%{assings: %{back_propagation: true}}) do
+    inference_ptx() <> back_ptx()
+  end
   def __ptx__(_node) do
+    inference_ptx()
+  end
+
+  defp inference_ptx() do
     """
     .version 5.0
     .target sm_30
     .address_size 64
 
-    <%= defkernel ctx, "padding" do %>
+    <%= defkernel ctx, "inference" do %>
       .reg .u64   %cd<3>;
       .reg .u64   %tidx, %tidz;
       .reg .u32   %tidy;
@@ -56,6 +66,18 @@ defmodule Neuro.Nodes.Padding do
 
     padding:
       st.global.<%= var(ctx, :f) %> [%cd2], <%= var(ctx, :padding) %>;
+      ret;
+    <% end %>
+    """
+  end
+
+  defp back_ptx() do
+    """
+    .version 5.0
+    .target sm_30
+    .address_size 64
+
+    <%= defkernel ctx, "back", shared: u64.ptr do %>
       ret;
     <% end %>
     """

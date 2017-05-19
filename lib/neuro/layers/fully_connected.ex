@@ -3,6 +3,15 @@ defmodule Neuro.Layers.FullyConnected do
   alias Neuro.Nodes.Base
   use Base, proto: Cuda.Graph
 
+  def __graph__(%{assigns: %{back_propagation: true}} = graph) do
+    vars = graph.assigns.vars
+    graph = case Map.get(vars, :softmax, false) do
+      false    -> graph
+      _softmax -> graph
+    end
+    graph = graph |> chain(:fully, Nodes.FullyConnected)
+    graph |> close()
+  end
   def __graph__(graph) do
     vars = graph.assigns.vars
     graph = graph |> chain(:fully, Nodes.FullyConnected)

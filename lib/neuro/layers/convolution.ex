@@ -10,9 +10,25 @@ defmodule Neuro.Layers.Convolution do
       %{conv_vars: cv}    -> cv
     end
     o = output_type(o)
-    [input(:input, i), output(:output, o)]
+    case Map.get(assigns, :back_propagation) do
+      true -> [input(:input, o), output(:output, i)]
+      _    -> [input(:input, i), output(:output, o)]
+    end
   end
 
+  def __graph__(%{assigns: %{back_propagation: true}} = graph) do
+    vars = graph.assigns.vars
+    graph = case vars.pooling do
+      false -> graph
+      _     -> graph |> chain(:pooling, Nodes.Pooling)
+    end
+    graph = graph |> chain(:conv, Nodes.Convolution)
+    graph = case vars.padding do
+      false -> graph
+      _     -> graph |> chain(:padding, Nodes.Padding)
+    end
+    graph |> close()
+  end
   def __graph__(graph) do
     vars = graph.assigns.vars
     graph = case vars.padding do

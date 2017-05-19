@@ -2,17 +2,27 @@ defmodule Neuro.Nodes.FullyConnected do
   alias Neuro.Nodes.Base
   use Base
 
+  def __batch__(%{assigns: %{back_propagation: true, vars: vars}}) do
+    [{"back", vars.block, vars.grid, [:shared]}]
+  end
   def __batch__(%{assigns: %{vars: vars}}) do
-    [{"fully_connected", vars.block, vars.grid, [:shared]}]
+    [{"inference", vars.block, vars.grid, [:shared]}]
   end
 
+  def __ptx__(%{assings: %{back_propagation: true}}) do
+    inference_ptx() <> back_ptx()
+  end
   def __ptx__(_node) do
+    inference_ptx()
+  end
+
+  def inference_ptx() do
     """
     .version 4.3
     .target sm_20
     .address_size 64
 
-    <%= defkernel ctx, "fully_connected", shared: u64.ptr do %>
+    <%= defkernel ctx, "inference", shared: u64.ptr do %>
       .reg .u64   %cd<5>, %x, %last;
     	.reg .<%= var(ctx, :f) %> %f<4>;
     	.reg .pred	p;
@@ -67,6 +77,18 @@ defmodule Neuro.Nodes.FullyConnected do
       // relu activation
       <%= include ctx, var(ctx, :activation), in: "f0", pred: "p" %>
       st.global.<%= var(ctx, :f) %> [%cd2], %f0;
+      ret;
+    <% end %>
+    """
+  end
+
+  defp back_ptx() do
+    """
+    .version 5.0
+    .target sm_30
+    .address_size 64
+
+    <%= defkernel ctx, "back", shared: u64.ptr do %>
       ret;
     <% end %>
     """

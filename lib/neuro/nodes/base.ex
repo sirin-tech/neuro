@@ -22,11 +22,17 @@ defmodule Neuro.Nodes.Base do
                |> vars(env)
                |> Enum.into(%{})
                |> Map.merge(%{float_size: float_size, f: f})
-        %{vars: vars, helpers: [Neuro.Nodes.Base.Helpers]}
+        assings = %{vars: vars, helpers: [Neuro.Nodes.Base.Helpers]}
+        back = opts |> Keyword.take([:back_propagation]) |> Enum.into(%{})
+        Map.merge(assings, back)
       end
 
+      def __pins__(%{back_propagation: true} = assigns) do
+        [input(:input,   output_type(assigns.vars)),
+         output(:output, input_type(assigns.vars))]
+      end
       def __pins__(assigns) do
-        [input(:input, input_type(assigns.vars)),
+        [input(:input,   input_type(assigns.vars)),
          output(:output, output_type(assigns.vars))]
       end
 
