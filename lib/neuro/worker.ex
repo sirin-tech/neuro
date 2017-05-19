@@ -1,6 +1,6 @@
 defmodule Neuro.Worker do
   use GenServer
-  alias Neuro.Variables
+  alias Cuda.Shared
   alias Cuda.Graph
   alias Cuda.Graph.Factory
   alias Cuda.Graph.Processing
@@ -59,11 +59,11 @@ defmodule Neuro.Worker do
          {:ok, shared} <- collect_shared(precompiled),
          vars = %{weights: {shared.weights, weights}, biases: {shared.biases, biases}},
          # load shared variables
-         {:ok, _} <- Variables.load(st.vars, vars),
-         {:ok, shared} <- Variables.share(st.vars),
+         {:ok, _} <- Shared.load(st.vars, vars),
+         {:ok, shared} <- Shared.share(st.vars),
          {:ok, shared} <- Cuda.memory_load(st.cuda, shared),
          # retrieve shared variables offset for compilation
-         {:ok, offsets} <- Variables.offsets(st.vars),
+         {:ok, offsets} <- Shared.offsets(st.vars),
          # compile sources into cubin
          {:ok, graph} <- Unit.compile(graph, %{ctx | assigns: %{shared_offsets: offsets}}),
          # load compiled cubins into GPU

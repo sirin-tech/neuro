@@ -58,7 +58,7 @@ defmodule Neuro.Network do
                                    vars: unquote(@vars),
                                    name: __MODULE__.Worker)
         children = [
-          worker(Neuro.Variables, [[name: unquote(@vars)]]),
+          worker(Cuda.Shared, [[name: unquote(@vars)]]),
           worker(Neuro.Worker, [opts])
         ]
         supervise(children, strategy: :one_for_one)

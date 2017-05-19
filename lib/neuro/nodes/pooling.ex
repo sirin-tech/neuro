@@ -23,7 +23,7 @@ defmodule Neuro.Nodes.Pooling do
     .target sm_30
     .address_size 64
 
-    <%= defkernel ctx, "pooling" do %>
+    <%= defkernel ctx, "inference" do %>
       .reg .u64   %cd<4>, %tidz;
       .reg .u32   %tidx, %tidy;
       .reg .<%= var(ctx, :f) %> %f<3>;
