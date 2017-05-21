@@ -11,7 +11,7 @@ defmodule Neuro.Layers.Convolution do
     end
     o = output_type(o)
     case Map.get(assigns, :back_propagation) do
-      true -> [input(:input, o), output(:output, i)]
+      true -> [input(:output, o), output(:input, i)]
       _    -> [input(:input, i), output(:output, o)]
     end
   end
@@ -20,12 +20,12 @@ defmodule Neuro.Layers.Convolution do
     vars = graph.assigns.vars
     graph = case vars.pooling do
       false -> graph
-      _     -> graph |> chain(:pooling, Nodes.Pooling)
+      _     -> graph |> chain(:pooling_node, Nodes.Pooling)
     end
-    graph = graph |> chain(:conv, Nodes.Convolution)
+    graph = graph |> chain(:conv_node, Nodes.Convolution)
     graph = case vars.padding do
       false -> graph
-      _     -> graph |> chain(:padding, Nodes.Padding)
+      _     -> graph |> chain(:padding_node, Nodes.Padding)
     end
     graph |> close()
   end
@@ -33,19 +33,19 @@ defmodule Neuro.Layers.Convolution do
     vars = graph.assigns.vars
     graph = case vars.padding do
       false -> graph
-      _     -> graph |> chain(:padding, Nodes.Padding)
+      _     -> graph |> chain(:padding_node, Nodes.Padding)
     end
-    graph = graph |> chain(:conv, Nodes.Convolution)
+    graph = graph |> chain(:conv_node, Nodes.Convolution)
     graph = case vars.pooling do
       false -> graph
-      _     -> graph |> chain(:pooling, Nodes.Pooling)
+      _     -> graph |> chain(:pooling_node, Nodes.Pooling)
     end
     graph |> close()
   end
 
-  def __child_options__(:pooling, _, %{assigns: %{vars: %{pooling: opts}}}), do: opts
-  def __child_options__(:padding, _, %{assigns: %{vars: %{padding: opts}}}), do: opts
-  def __child_options__(:conv,    _, %{assigns: %{vars: %{conv: opts}}}), do: opts
+  def __child_options__(:pooling_node, _, %{assigns: %{vars: %{pooling: opts}}}), do: opts
+  def __child_options__(:padding_node, _, %{assigns: %{vars: %{padding: opts}}}), do: opts
+  def __child_options__(:conv_node,    _, %{assigns: %{vars: %{conv: opts}}}), do: opts
   def __child_options__(_, _, _), do: []
 
   def vars(opts, env) do

@@ -13,7 +13,8 @@ defmodule Neuro.Nodes.FullyConnectedTest do
     end
 
     def __graph__(graph) do
-      graph |> chain(:network, FullyConnected, graph.assigns.options) |> close()
+      opts = Keyword.put(graph.assigns.options, :alias, :network)
+      graph |> chain(:fc, FullyConnected, opts) |> close()
     end
 
     defdelegate vars(opts, env), to: FullyConnected

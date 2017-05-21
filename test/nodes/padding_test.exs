@@ -8,7 +8,7 @@ defmodule Neuro.Nodes.PaddingTest do
     use Neuro.Nodes.Base, proto: Cuda.Graph
 
     def __graph__(graph) do
-      graph |> chain(:network, Padding, graph.assigns.options) |> close()
+      graph |> chain(:padding, Padding, graph.assigns.options) |> close()
     end
 
     defdelegate vars(opts, env), to: Padding
@@ -35,11 +35,11 @@ defmodule Neuro.Nodes.PaddingTest do
       # 5.4 = 0.2 * 1.0 + 0.3 * 2.0 + 0.6 * 3.0 + 0.7 * 4.0
       # ...
       assert o.output |> round!() == [
-        1.0, 1.0, 1.0, 1.0, 1.0,
-        1.0, 0.1, 0.2, 0.3, 1.0,
-        1.0, 0.5, 0.6, 0.7, 1.0,
-        1.0, 1.0, 0.1, 0.2, 1.0,
-        1.0, 1.0, 1.0, 1.0, 1.0,
+        [1.0, 1.0, 1.0, 1.0, 1.0],
+        [1.0, 0.1, 0.2, 0.3, 1.0],
+        [1.0, 0.5, 0.6, 0.7, 1.0],
+        [1.0, 1.0, 0.1, 0.2, 1.0],
+        [1.0, 1.0, 1.0, 1.0, 1.0],
       ]
     end
   end

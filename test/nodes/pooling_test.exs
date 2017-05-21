@@ -8,7 +8,7 @@ defmodule Neuro.Nodes.PoolingTest do
     use Neuro.Nodes.Base, proto: Cuda.Graph
 
     def __graph__(graph) do
-      graph |> chain(:network, Pooling, graph.assigns.options) |> close()
+      graph |> chain(:pooling, Pooling, graph.assigns.options) |> close()
     end
 
     defdelegate vars(opts, env), to: Pooling
@@ -34,8 +34,8 @@ defmodule Neuro.Nodes.PoolingTest do
       {:ok, o} = Cuda.Worker.run(worker, %{input: i})
 
       assert o.output |> round!() == [
-        0.6, 0.8,
-        1.0, 0.7
+        [0.6, 0.8],
+        [1.0, 0.7]
       ]
     end
 
@@ -51,9 +51,9 @@ defmodule Neuro.Nodes.PoolingTest do
       {:ok, o} = Cuda.Worker.run(worker, %{input: i})
 
       assert o.output |> round!() == [
-        0.6, 0.7, 0.8,
-        1.0, 0.7, 0.8,
-        1.0, 0.6, 0.7
+        [0.6, 0.7, 0.8],
+        [1.0, 0.7, 0.8],
+        [1.0, 0.6, 0.7]
       ]
     end
   end

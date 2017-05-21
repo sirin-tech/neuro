@@ -1,4 +1,7 @@
 defmodule Neuro.Network do
+  # alias Cuda.Graph.Factory
+  # alias Cuda.Graph.Node
+
   @pins     __MODULE__.Pins
   @f        __MODULE__.F
   @vars     __MODULE__.Vars
@@ -28,26 +31,32 @@ defmodule Neuro.Network do
       def __assigns__(opts, _env) do
         opts |> Enum.into(%{}) |> unquote(__MODULE__).vars
       end
-      def __graph__(graph) do
-        graph(graph)
+      def __graph__(%{assigns: %{options: opts}} = graph) do
+        case Keyword.get(opts, :type) do
+          :training         -> unquote(__MODULE__).make_training_graph(graph)
+          :back_propagation -> unquote(__MODULE__).make_back_propagation_graph(graph)
+          _                 -> graph(graph)
+        end
       end
       def __child_options__(_id, _module, %{nodes: [], assigns: %{options: opts}} = graph) do
         import Cuda.Graph.Node, only: [input_pin_types: 0]
-        {_, input} = graph
-                     |> Cuda.Graph.NodeProto.pins(input_pin_types())
-                     |> List.first
-                     |> Map.get(:data_type)
-        [size: input,
-         float_size: Keyword.get(opts, :float_size, unquote(float_size))]
+        opts = [float_size: Keyword.get(opts, :float_size, unquote(float_size))]
+        with [input | _] <- graph |> Cuda.Graph.NodeProto.pins(input_pin_types()),
+             {_, type} = input.data_type do
+          Keyword.put(opts, :size, type)
+        else
+          _ -> opts
+        end
       end
       def __child_options__(_id, _module, %{nodes: [last | _], assigns: %{options: opts}}) do
         import Cuda.Graph.Node, only: [output_pin_types: 0]
-        {_, output} = last
-                      |> Cuda.Graph.NodeProto.pins(output_pin_types())
-                      |> List.first
-                      |> Map.get(:data_type)
-        [size: output,
-         float_size: Keyword.get(opts, :float_size, unquote(float_size))]
+        opts = [float_size: Keyword.get(opts, :float_size, unquote(float_size))]
+        with [output | _] <- last |> Cuda.Graph.NodeProto.pins(output_pin_types()),
+             {_, type} = output.data_type do
+          Keyword.put(opts, :size, type)
+        else
+          _ -> opts
+        end
       end
       def __child_options__(_id, _module, _graph) do
         []
@@ -83,12 +92,18 @@ defmodule Neuro.Network do
     quote do
       def __pins__(assigns) do
         import Cuda.Graph.Node, only: [output_pin_types: 0]
-        case Keyword.get(assigns.options, :training) do
-          true ->
+        case Keyword.get(assigns.options, :type) do
+          :training ->
             pins = unquote(pins)
             output = pins |> Enum.find(& &1.type in output_pin_types())
-            reply = %{output | name: :reply, type: :input}
+            reply = %{output | id: :reply, type: :input}
             pins ++ [reply]
+          :back_propagation ->
+            unquote(pins) |> Enum.reduce([], fn
+              %{type: :output} = pin, pins -> [%{pin | type: :input} | pins]
+              %{type: :input} = pin, pins -> [%{pin | type: :output} | pins]
+              _, pins -> pins
+            end)
           _ ->
             unquote(pins)
         end
@@ -123,6 +138,69 @@ defmodule Neuro.Network do
       f = Module.get_attribute(__MODULE__, unquote(@f))
       pin = Cuda.Graph.Node.output(unquote(id), {f, unquote(arity)})
       Module.put_attribute(__MODULE__, unquote(@pins), pin)
+    end
+  end
+
+  def make_training_graph(%{assigns: %{options: options}} = graph) do
+    iopts = Keyword.drop(options, [:type])
+    graph = graph |> Cuda.Graph.add(:inference, graph.module, iopts)
+    inference = Cuda.Graph.GraphProto.node(graph, :inference)
+
+    bopts = Keyword.merge(iopts, type: :back_propagation, inference: inference)
+    graph = graph |> Cuda.Graph.add(:back_propagation, graph.module, bopts)
+    back = Cuda.Graph.GraphProto.node(graph, :back_propagation)
+
+    eopts = [input: Cuda.Graph.NodeProto.pin(inference, :output),
+             output: Cuda.Graph.NodeProto.pin(back, :input)]
+    graph = graph
+    |> Cuda.Graph.add(:error, Neuro.Nodes.Error, eopts)
+    |> Cuda.Graph.link(:input, {:inference, :input})
+    |> Cuda.Graph.link(:reply, {:error, :reply})
+    |> Cuda.Graph.link({:inference, :output}, {:error, :input})
+    |> Cuda.Graph.link({:error, :output}, {:back_propagation, :output})
+    |> Cuda.Graph.link({:back_propagation, :input}, :output)
+    # IO.puts(dump(graph |> Cuda.Graph.Processing.expand))
+    graph
+  end
+
+  def dump(graph, indent \\ "") do
+    nodes = case Map.get(graph, :nodes) do
+      nil   -> ""
+      nodes -> indent <> "nodes:\n" <> (nodes |> Enum.map(& dump(&1, indent <> "  ")) |> Enum.join("\n"))
+    end
+    links = case Map.get(graph, :links) do
+      nil   -> ""
+      links -> indent <> "links:\n#{indent}  " <>
+               (links |> Enum.map(&"#{inspect &1}") |> Enum.join("\n#{indent}  "))
+    end
+    pins = indent <> "pins:\n#{indent}  " <>
+           (graph.pins |> Enum.map(&"#{inspect &1}") |> Enum.join("\n#{indent}  "))
+    [indent <> "id: #{Cuda.Graph.Node.string_id(graph.id)}",
+     "#{indent}type: #{graph.type}",
+     pins,
+     nodes,
+     links] |> Enum.join("\n")
+  end
+
+  def make_back_propagation_graph(%{assigns: %{options: options}} = graph) do
+    inference = Keyword.get(options, :inference)
+    result = Cuda.Graph.Processing.dfs_reverse(inference, fn
+      :enter, {%{id: :inference}, _}, graph ->
+        {:ok, graph}
+      :enter, {node, _}, graph ->
+        opts = node.assigns.options |> Keyword.put(:back_propagation, true)
+        graph = graph |> Cuda.Graph.add(node.id, node.module, opts)
+        {:ok, graph}
+      :move, {{src, src_pin}, {dst, dst_pin}}, graph ->
+        src_id = if src.id == :inference, do: :__self__, else: src.id
+        dst_id = if dst.id == :inference, do: :__self__, else: dst.id
+        link = {{src_id, src_pin.id}, {dst_id, dst_pin.id}}
+        {:ok, %{graph | links: [link | graph.links]}}
+      _, _, graph ->
+        {:ok, graph}
+    end, graph)
+    with {:ok, graph} <- result do
+      graph
     end
   end
 

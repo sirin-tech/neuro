@@ -1,11 +1,11 @@
 defmodule Neuro.Nodes.Base do
   defmodule Helpers do
-    def shared_offset(ctx, name) do
-      id = with {parent_id, _} <- ctx.node.id, do: parent_id
-      id = Cuda.Graph.Node.string_id(id)
-      # IO.inspect({id, name, ctx.assigns.shared_offsets})
-      ctx.assigns.shared_offsets[name][id]
-    end
+    #def shared_offset(ctx, name) do
+    #  id = with {parent_id, _} <- ctx.node.id, do: parent_id
+    #  id = Cuda.Graph.Node.string_id(id)
+    #  # IO.inspect({id, name, ctx.assigns.shared_offsets})
+    #  ctx.assigns.shared_offsets[name][id]
+    #end
   end
 
   defmacro __using__(opts) do
@@ -18,7 +18,6 @@ defmodule Neuro.Nodes.Base do
       def shared(_vars), do: %{}
 
       def __assigns__(opts, env) do
-        # IO.inspect(opts)
         float_size = opts |> Keyword.get(:float_size) |> float_size()
         f = "f#{float_size * 8}"
         vars = opts
@@ -26,23 +25,40 @@ defmodule Neuro.Nodes.Base do
                |> vars(env)
                |> Enum.into(%{})
                |> Map.merge(%{float_size: float_size, f: f})
-        assings = %{vars: vars, helpers: [Neuro.Nodes.Base.Helpers]}
-        shared = shared(vars)
-        back = opts |> Keyword.take([:back_propagation]) |> Enum.into(%{})
-        assings |> Map.merge(back)
-                |> Map.put(:shared, shared)
+        assigns = %{vars: vars, helpers: [Neuro.Nodes.Base.Helpers]}
+        case Keyword.get(opts, :back_propagation) do
+          true -> Map.merge(assigns, %{back_propagation: true})
+          _    -> Map.merge(assigns, %{shared: shared(vars)})
+        end
+      end
+
+      def __compile__(%{id: id, assigns: %{back_propagation: true}} = node) do
+        case id |> Cuda.Graph.Node.string_id() |> String.split("__") do
+          ["back_propagation" | id] ->
+            id = ["inference" | id] |> Enum.join("__")
+            {:ok, Cuda.Graph.NodeProto.assign(node, :alias, id)}
+          _ ->
+            {:ok, node}
+        end
+      end
+      def __compile__(node) do
+        case Keyword.get(node.assigns.options, :alias) do
+          nil -> {:ok, node}
+          a   -> {:ok, Cuda.Graph.NodeProto.assign(node, :alias, a)}
+        end
       end
 
       def __pins__(%{back_propagation: true} = assigns) do
-        [input(:input,   output_type(assigns.vars)),
-         output(:output, input_type(assigns.vars))]
+        #IO.inspect({:!, output_type(assigns.vars)})
+        [output(:input, input_type(assigns.vars)),
+         input(:output, output_type(assigns.vars))]
       end
       def __pins__(assigns) do
         [input(:input,   input_type(assigns.vars)),
          output(:output, output_type(assigns.vars))]
       end
 
-      defoverridable __pins__: 1, shared: 1, vars: 2
+      defoverridable __compile__: 1, __pins__: 1, shared: 1, vars: 2
     end
   end
 

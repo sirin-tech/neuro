@@ -13,7 +13,8 @@ defmodule Neuro.Nodes.ConvolutionTest do
     end
 
     def __graph__(graph) do
-      graph |> chain(:network, Convolution, graph.assigns.options) |> close()
+      opts = Keyword.put(graph.assigns.options, :alias, :network)
+      graph |> chain(:conv, Convolution, opts) |> close()
     end
 
     defdelegate vars(opts, env), to: Convolution
@@ -23,7 +24,7 @@ defmodule Neuro.Nodes.ConvolutionTest do
     setup do
       {:ok, shared} = Cuda.Shared.start_link()
       log_level = Logger.level()
-      Logger.configure(level: :error)
+      Logger.configure(level: :warn)
       on_exit(fn -> Logger.configure(level: log_level) end)
       [shared: shared]
     end
@@ -50,13 +51,13 @@ defmodule Neuro.Nodes.ConvolutionTest do
       # 5.4 = 0.2 * 1.0 + 0.3 * 2.0 + 0.6 * 3.0 + 0.7 * 4.0
       # ...
       assert o.output |> round!() == [
-        4.4, 5.4, 6.4,
-        5.1, 3.1, 4.1,
-        4.4, 4.4, 5.4,
+        [[4.4, 5.4, 6.4],
+         [5.1, 3.1, 4.1],
+         [4.4, 4.4, 5.4]],
 
-        10.0, 12.6, 15.2,
-        13.9,  9.5, 12.1,
-        12.4, 10.0, 12.6
+        [[10.0, 12.6, 15.2],
+         [13.9,  9.5, 12.1],
+         [12.4, 10.0, 12.6]]
       ]
     end
 
@@ -77,8 +78,13 @@ defmodule Neuro.Nodes.ConvolutionTest do
       {:ok, o} = Cuda.Worker.run(worker, %{input: i})
 
       assert o.output |> round!() == [
-        4.4, 5.4, 6.4, 5.1, 3.1, 4.1, 4.4, 4.4, 5.4,
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        [[4.4, 5.4, 6.4],
+         [5.1, 3.1, 4.1],
+         [4.4, 4.4, 5.4]],
+
+        [[0.0, 0.0, 0.0],
+         [0.0, 0.0, 0.0],
+         [0.0, 0.0, 0.0]]
       ]
     end
   end

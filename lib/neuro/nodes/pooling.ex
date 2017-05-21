@@ -4,10 +4,10 @@ defmodule Neuro.Nodes.Pooling do
   use Base
 
   def __batch__(%{assigns: %{back_propagation: true, vars: vars}}) do
-    [{"back", vars.block, vars.grid, []}]
+    [{:run, {"back", vars.block, vars.grid, []}}]
   end
   def __batch__(%{assigns: %{vars: vars}}) do
-    [{"inference", vars.block, vars.grid, []}]
+    [{:run, {"inference", vars.block, vars.grid, []}}]
   end
 
   def __ptx__(%{assings: %{back_propagation: true}}) do
@@ -40,8 +40,8 @@ defmodule Neuro.Nodes.Pooling do
       mad.wide.u32  %cd1, %tidy, <%= var(ctx, :sy) * var(ctx, :x) %>, %cd1;
       mad.lo.u64    %cd1, %tidz, <%= var(ctx, :x) * var(ctx, :y) %>, %cd1;
       mad.lo.u64    %cd1, %cd1, <%= var(ctx, :float_size) %>, %cd0;
-      <%= if offset(ctx, :input) > 0 do %>
-        add.u64     %cd1, %cd1, <%= offset(ctx, :input) %>;
+      <%= if pin_offset(ctx, :input) > 0 do %>
+        add.u64     %cd1, %cd1, <%= pin_offset(ctx, :input) %>;
       <% end %>
 
       // (%cd2) output.offset = output + (tid.x + tid.y * ox + tid.z * ox * oy) * float_size
@@ -49,8 +49,8 @@ defmodule Neuro.Nodes.Pooling do
       mad.wide.u32  %cd2, %tidy, <%= var(ctx, :ox) %>, %cd2;
       mad.lo.u64    %cd2, %tidz, <%= var(ctx, :ox) * var(ctx, :oy) %>, %cd2;
       mad.lo.u64    %cd2, %cd2, <%= var(ctx, :float_size) %>, %cd0;
-      <%= if offset(ctx, :output) > 0 do %>
-        add.u64     %cd2, %cd2, <%= offset(ctx, :output) %>;
+      <%= if pin_offset(ctx, :output) > 0 do %>
+        add.u64     %cd2, %cd2, <%= pin_offset(ctx, :output) %>;
       <% end %>
 
       // %first - first item flag

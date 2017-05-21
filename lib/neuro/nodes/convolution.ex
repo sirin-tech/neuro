@@ -3,10 +3,10 @@ defmodule Neuro.Nodes.Convolution do
   use Base
 
   def __batch__(%{assigns: %{back_propagation: true, vars: vars}}) do
-    [{"back", vars.block, vars.grid, [:shared]}]
+    [{:run, {"back", vars.block, vars.grid, [:shared]}}]
   end
   def __batch__(%{assigns: %{vars: vars}}) do
-    [{"inference", vars.block, vars.grid, [:shared]}]
+    [{:run, {"inference", vars.block, vars.grid, [:shared]}}]
   end
 
   def __ptx__(%{assings: %{back_propagation: true}}) do
@@ -38,8 +38,8 @@ defmodule Neuro.Nodes.Convolution do
       mul.lo.u64    %cd2, %x, <%= var(ctx, :sx) %>;
       mad.lo.u64    %cd2, %y, <%= var(ctx, :sy) * var(ctx, :x) %>, %cd2;
       mad.lo.u64    %cd2, %cd2, <%= var(ctx, :float_size) %>, %cd0;
-      <%= if offset(ctx, :input) > 0 do %>
-        add.u64       %cd2, %cd2, <%= offset(ctx, :input) %>;
+      <%= if pin_offset(ctx, :input) > 0 do %>
+        add.u64       %cd2, %cd2, <%= pin_offset(ctx, :input) %>;
       <% end %>
 
       // (%cd1) w.offset = w + tid.z * wx * wy * float_size
@@ -52,8 +52,8 @@ defmodule Neuro.Nodes.Convolution do
       mad.lo.u64    %cd3, %y, <%= var(ctx, :ox) %>, %x;
       mad.lo.u64    %cd3, %z, <%= var(ctx, :ox) * var(ctx, :oy) %>, %cd3;
       mad.lo.u64    %cd3, %cd3, <%= var(ctx, :float_size) %>, %cd0;
-      <%= if offset(ctx, :output) > 0 do %>
-        add.u64       %cd3, %cd3, <%= offset(ctx, :output) %>;
+      <%= if pin_offset(ctx, :output) > 0 do %>
+        add.u64       %cd3, %cd3, <%= pin_offset(ctx, :output) %>;
       <% end %>
 
       // %f0 - accumulator
