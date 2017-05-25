@@ -4,13 +4,18 @@ defmodule Neuro.Layers.FullyConnected do
   use Base, proto: Cuda.Graph
 
   def __graph__(%{assigns: %{back_propagation: true}} = graph) do
-    vars = graph.assigns.vars
-    graph = case Map.get(vars, :softmax, false) do
-      false    -> graph
-      _softmax -> graph
-    end
-    graph = graph |> chain(:fc_node, Nodes.FullyConnected)
-    graph |> close()
+    #vars = graph.assigns.vars
+    #graph = case Map.get(vars, :softmax, false) do
+    #  false    -> graph
+    #  _softmax -> graph
+    #end
+    #graph = graph |> chain(:fc_node, Nodes.FullyConnected)
+    #graph |> close()
+    graph
+    |> add(:fc_node, Nodes.FullyConnected)
+    |> link(:output, {:fc_node, :output})
+    |> link(:result, {:fc_node, :result})
+    |> link({:fc_node, :input}, :input)
   end
   def __graph__(graph) do
     vars = graph.assigns.vars
@@ -29,8 +34,8 @@ defmodule Neuro.Layers.FullyConnected do
     Nodes.FullyConnected.vars(opts, env)
   end
 
-  def shared(vars) do
-    %{weights: {vars.f, vars.x * vars.ox},
-      biases:  {vars.f, vars.ox}}
-  end
+  #def shared(vars) do
+  #  %{weights: {vars.f, vars.x * vars.ox},
+  #    biases:  {vars.f, vars.ox}}
+  #end
 end

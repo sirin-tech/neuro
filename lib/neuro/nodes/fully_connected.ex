@@ -9,7 +9,7 @@ defmodule Neuro.Nodes.FullyConnected do
     [{:run, {"inference", vars.block, vars.grid, [:shared]}}]
   end
 
-  def __ptx__(%{assings: %{back_propagation: true}}) do
+  def __ptx__(%{assigns: %{back_propagation: true}}) do
     back_ptx()
   end
   def __ptx__(_node) do
@@ -113,5 +113,11 @@ defmodule Neuro.Nodes.FullyConnected do
       activation: activation,
       block: block, grid: grid,
       f: f, float_size: float_size}
+  end
+
+  def shared(key, vars) do
+    shared = %{weights: {vars.f, vars.x * vars.ox},
+               biases:  {vars.f, vars.ox}}
+    Map.put(%{}, key, shared)
   end
 end

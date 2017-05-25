@@ -159,9 +159,34 @@ defmodule Neuro.Network do
     |> Cuda.Graph.link({:inference, :output}, {:error, :input})
     |> Cuda.Graph.link({:error, :output}, {:back_propagation, :output})
     |> Cuda.Graph.link({:back_propagation, :input}, :output)
+
+    shared = graph |> collect_shared(%{})
+
+    graph = graph
+    |> Cuda.Graph.Processing.expand
+    graph = graph.nodes |> Enum.reduce(graph, fn
+      %{id: id, type: :gpu}, graph when is_tuple(id) and elem(id, 0) == :inference ->
+        back_id = put_elem(id, 0, :back_propagation)
+        #IO.inspect({id, back_id})
+        graph |> Cuda.Graph.link({id, :output}, {back_id, :result})
+      _, graph ->
+        graph
+    end)
+    #|> IO.inspect
     # IO.puts(dump(graph |> Cuda.Graph.Processing.expand))
-    graph
+    #graph
+    Cuda.Graph.NodeProto.assign(graph, :shared, shared)
   end
+
+  defp collect_shared(%{nodes: nodes} = graph, shared) do
+    with {:ok, graph} <- graph.module.__compile__(graph) do
+      shared = Map.merge(shared, Map.get(graph.assigns, :shared, %{}))
+      Enum.reduce(nodes, shared, &collect_shared/2)
+    else
+      _ -> shared
+    end
+  end
+  defp collect_shared(_node, shared), do: shared
 
   def dump(graph, indent \\ "") do
     nodes = case Map.get(graph, :nodes) do

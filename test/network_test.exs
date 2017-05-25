@@ -21,7 +21,7 @@ defmodule Neuro.NetworkTest do
   describe "Network" do
     setup do
       log_level = Logger.level()
-      Logger.configure(level: :error)
+      Logger.configure(level: :warn)
       on_exit(fn ->
         Logger.configure(level: log_level)
       end)
@@ -52,20 +52,27 @@ defmodule Neuro.NetworkTest do
     end
 
     test "back propagation" do
+      i = [0.1, 0.2, 0.3,
+           0.5, 0.6, 0.7,
+           1.0, 0.1, 0.2]
+      r = [0.0, 0.0, 100.0]
+
       shared = %{
         weights: %{
-          inference__conv: [1.0, 2.0, 3.0, 4.0],
-          inference__fc: [0.1, 0.2, 0.3, 0.4,
+          conv: [1.0, 2.0, 3.0, 4.0],
+          fc: [0.1, 0.2, 0.3, 0.4,
                1.0, 2.0, 3.0, 4.0,
                10.0, 20.0, 30.0, 40.0]
         },
         biases: %{
-          inference__conv: [0.0, 0.0, 0.0, 0.0],
-          inference__fc: [0.0, 0.0, 0.0]
+          conv: [0.0, 0.0, 0.0, 0.0],
+          fc: [0.0, 0.0, 0.0]
         }
       }
 
       SimpleNetwork.start_link(shared: shared, network_options: [type: :training])
+      {:ok, o} = SimpleNetwork.run(%{input: i, reply: r})
+      IO.inspect(o)
     end
   end
 end

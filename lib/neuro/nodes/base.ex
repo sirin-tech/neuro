@@ -15,7 +15,7 @@ defmodule Neuro.Nodes.Base do
       import unquote(__MODULE__)
 
       def vars(_opts, _env), do: %{}
-      def shared(_vars), do: %{}
+      def shared(_key, _vars), do: %{}
 
       def __assigns__(opts, env) do
         float_size = opts |> Keyword.get(:float_size) |> float_size()
@@ -28,7 +28,7 @@ defmodule Neuro.Nodes.Base do
         assigns = %{vars: vars, helpers: [Neuro.Nodes.Base.Helpers]}
         case Keyword.get(opts, :back_propagation) do
           true -> Map.merge(assigns, %{back_propagation: true})
-          _    -> Map.merge(assigns, %{shared: shared(vars)})
+          _    -> assigns
         end
       end
 
@@ -41,24 +41,37 @@ defmodule Neuro.Nodes.Base do
             {:ok, node}
         end
       end
-      def __compile__(node) do
-        case Keyword.get(node.assigns.options, :alias) do
-          nil -> {:ok, node}
-          a   -> {:ok, Cuda.Graph.NodeProto.assign(node, :alias, a)}
+      def __compile__(%{id: id} = node) do
+        assigns = case Keyword.get(node.assigns.options, :alias) do
+          nil -> %{}
+          a   -> %{alias: a}
         end
+        assigns = case Map.get(node, :nodes) do
+          nil ->
+            assigns
+          nodes ->
+            shared = Enum.reduce(nodes, %{}, fn node, shared ->
+              node.module.shared(id, node.assigns.vars)
+            end)
+            Map.put(assigns, :shared, shared)
+        end
+        #IO.inspect({id, assigns})
+        #assigns = Map.merge(assigns, %{shared: shared(node.id, vars)})
+        {:ok, Cuda.Graph.NodeProto.assign(node, assigns)}
       end
 
       def __pins__(%{back_propagation: true} = assigns) do
         #IO.inspect({:!, output_type(assigns.vars)})
         [output(:input, input_type(assigns.vars)),
-         input(:output, output_type(assigns.vars))]
+         input(:output, output_type(assigns.vars)),
+         input(:result, output_type(assigns.vars))]
       end
       def __pins__(assigns) do
         [input(:input,   input_type(assigns.vars)),
          output(:output, output_type(assigns.vars))]
       end
 
-      defoverridable __compile__: 1, __pins__: 1, shared: 1, vars: 2
+      defoverridable __compile__: 1, __pins__: 1, shared: 2, vars: 2
     end
   end
 

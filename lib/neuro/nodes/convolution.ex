@@ -9,7 +9,7 @@ defmodule Neuro.Nodes.Convolution do
     [{:run, {"inference", vars.block, vars.grid, [:shared]}}]
   end
 
-  def __ptx__(%{assings: %{back_propagation: true}}) do
+  def __ptx__(%{assigns: %{back_propagation: true}}) do
     back_ptx()
   end
   def __ptx__(_node) do
@@ -136,5 +136,12 @@ defmodule Neuro.Nodes.Convolution do
       raise RuntimeError, message: "Maximum allowed layer depth is #{max_z}"
     end
     {{1, 1, 1}, {oz, oy, ox}}
+  end
+
+  def shared(key, vars) do
+    #vars = vars.conv_vars
+    shared = %{weights: {vars.f, vars.wx * vars.wy * vars.wz},
+               biases:  {vars.f, vars.wx * vars.wy * vars.wz}}
+    Map.put(%{}, key, shared)
   end
 end

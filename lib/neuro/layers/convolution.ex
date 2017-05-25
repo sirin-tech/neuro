@@ -11,18 +11,23 @@ defmodule Neuro.Layers.Convolution do
     end
     o = output_type(o)
     case Map.get(assigns, :back_propagation) do
-      true -> [input(:output, o), output(:input, i)]
+      true -> [input(:output, o), output(:input, i), input(:result, o)]
       _    -> [input(:input, i), output(:output, o)]
     end
   end
 
   def __graph__(%{assigns: %{back_propagation: true}} = graph) do
     vars = graph.assigns.vars
-    graph = case vars.pooling do
-      false -> graph
-      _     -> graph |> chain(:pooling_node, Nodes.Pooling)
+    {graph, next} = case vars.pooling do
+      false -> {graph, :output}
+      _     -> {graph |> chain(:pooling_node, Nodes.Pooling), {:pooling_node, :input}}
     end
-    graph = graph |> chain(:conv_node, Nodes.Convolution)
+    #graph = graph |> chain(:conv_node, Nodes.Convolution)
+    graph = graph
+            |> add(:conv_node, Nodes.Convolution)
+            |> link(next, {:conv_node, :output})
+            |> link(:result, {:conv_node, :result})
+            #|> link({:conv_node, :input})
     graph = case vars.padding do
       false -> graph
       _     -> graph |> chain(:padding_node, Nodes.Padding)
@@ -63,11 +68,11 @@ defmodule Neuro.Layers.Convolution do
     vars
   end
 
-  def shared(vars) do
-    vars = vars.conv_vars
-    %{weights: {vars.f, vars.wx * vars.wy * vars.wz},
-      biases:  {vars.f, vars.wx * vars.wy * vars.wz}}
-  end
+  #def shared(vars) do
+  #  vars = vars.conv_vars
+  #  %{weights: {vars.f, vars.wx * vars.wy * vars.wz},
+  #    biases:  {vars.f, vars.wx * vars.wy * vars.wz}}
+  #end
 
   defp process_padding(%{padding: p} = vars, env) do
     with p when is_list(p) <- padding(p) do

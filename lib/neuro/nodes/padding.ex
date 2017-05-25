@@ -10,7 +10,7 @@ defmodule Neuro.Nodes.Padding do
     [{:run, {"inference", vars.block, vars.grid, []}}]
   end
 
-  def __ptx__(%{assings: %{back_propagation: true}}) do
+  def __ptx__(%{assigns: %{back_propagation: true}}) do
     back_ptx()
   end
   def __ptx__(_node) do
