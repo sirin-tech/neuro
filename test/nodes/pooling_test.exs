@@ -5,7 +5,7 @@ defmodule Neuro.Nodes.PoolingTest do
   import Neuro.Test.NodesHelpers
 
   defmodule Wrapper do
-    use Neuro.Nodes.Base, proto: Cuda.Graph
+    use Neuro.Layers.Base
 
     def __graph__(graph) do
       graph |> chain(:pooling, Pooling, graph.assigns.options) |> close()
@@ -16,21 +16,17 @@ defmodule Neuro.Nodes.PoolingTest do
 
 
   describe "pooling node" do
-    setup do
-      log_level = Logger.level()
-      Logger.configure(level: :error)
-      on_exit(fn -> Logger.configure(level: log_level) end)
-    end
+    setup ~w(disable_logging load_graph)a
 
-    test "pooling: 2x2, stride: 2x2" do
+    @tag graph: Wrapper
+    @tag options: [size: {4, 4}, pooling: {2, 2}, stride: {2, 2}]
+    test "pooling: 2x2, stride: 2x2", ctx do
       i = [0.1, 0.2, 0.3, 0.4,
            0.5, 0.6, 0.7, 0.8,
            1.0, 0.1, 0.2, 0.3,
            0.4, 0.5, 0.6, 0.7]
 
-      opts = [network: Wrapper,
-              network_options: [size: {4, 4}, pooling: {2, 2}, stride: {2, 2}]]
-      {:ok, worker} = Cuda.Worker.start_link(opts)
+      {:ok, worker} = Cuda.Worker.start_link(ctx[:worker_options])
       {:ok, o} = Cuda.Worker.run(worker, %{input: i})
 
       assert o.output |> round!() == [
@@ -39,15 +35,15 @@ defmodule Neuro.Nodes.PoolingTest do
       ]
     end
 
-    test "pooling: 2x2, stride: 1x1" do
+    @tag graph: Wrapper
+    @tag options: [size: {4, 4}, pooling: 2, stride: 1]
+    test "pooling: 2x2, stride: 1x1", ctx do
       i = [0.1, 0.2, 0.3, 0.4,
            0.5, 0.6, 0.7, 0.8,
            1.0, 0.1, 0.2, 0.3,
            0.4, 0.5, 0.6, 0.7]
 
-      opts = [network: Wrapper,
-              network_options: [size: {4, 4}, pooling: 2, stride: 1]]
-      {:ok, worker} = Cuda.Worker.start_link(opts)
+      {:ok, worker} = Cuda.Worker.start_link(ctx[:worker_options])
       {:ok, o} = Cuda.Worker.run(worker, %{input: i})
 
       assert o.output |> round!() == [

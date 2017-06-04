@@ -1,7 +1,6 @@
 defmodule Neuro.Layers.FullyConnected do
   alias Neuro.Nodes
-  alias Neuro.Nodes.Base
-  use Base, proto: Cuda.Graph
+  use Neuro.Layers.Base
 
   def __graph__(%{assigns: %{back_propagation: true}} = graph) do
     #vars = graph.assigns.vars
@@ -15,7 +14,8 @@ defmodule Neuro.Layers.FullyConnected do
     |> add(:fc_node, Nodes.FullyConnected)
     |> link(:output, {:fc_node, :output})
     |> link(:result, {:fc_node, :result})
-    |> link({:fc_node, :input}, :input)
+    |> link(:inference, {:fc_node, :inference})
+    |> close()
   end
   def __graph__(graph) do
     vars = graph.assigns.vars
@@ -27,15 +27,14 @@ defmodule Neuro.Layers.FullyConnected do
     graph |> close()
   end
 
-  def __child_options__(:fc_node, _, %{assigns: %{options: opts}}), do: opts
-  def __child_options__(_, _, _), do: []
+  def __child_options__(id, module, %{assigns: %{options: opts}} = graph) do
+    Keyword.merge(super(id, module, graph), child_options(id, opts))
+  end
+
+  defp child_options(:fc_node, opts), do: opts
+  defp child_options(_, _), do: []
 
   def vars(opts, env) do
     Nodes.FullyConnected.vars(opts, env)
   end
-
-  #def shared(vars) do
-  #  %{weights: {vars.f, vars.x * vars.ox},
-  #    biases:  {vars.f, vars.ox}}
-  #end
 end

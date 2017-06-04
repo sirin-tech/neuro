@@ -2,49 +2,51 @@ defmodule Neuro.Nodes.ConvolutionTest do
   use ExUnit.Case
   require Logger
   alias Neuro.Nodes.Convolution
+  alias Cuda.Shared
   import Neuro.Test.NodesHelpers
 
-  defmodule Wrapper do
-    use Neuro.Nodes.Base, proto: Cuda.Graph
-
-    def shared(vars) do
-      %{weights: {vars.f, vars.wx * vars.wy * vars.wz},
-        biases:  {vars.f, vars.wx * vars.wy * vars.wz}}
-    end
+  defmodule Inference do
+    use Neuro.Layers.Base
 
     def __graph__(graph) do
-      opts = Keyword.put(graph.assigns.options, :alias, :network)
-      graph |> chain(:conv, Convolution, opts) |> close()
+      graph |> chain(:conv, Convolution, graph.assigns.options) |> close()
+    end
+
+    defdelegate vars(opts, env), to: Convolution
+  end
+
+  defmodule BackPropagation do
+    use Neuro.Layers.Base
+
+    def __graph__(graph) do
+      graph# |> IO.inspect
+      |> add(:conv, Convolution, graph.assigns.options)
+      |> link(:output, {:conv, :output})
+      |> link(:result, {:conv, :result})
+      |> link(:inference, {:conv, :inference})
+      |> close()
     end
 
     defdelegate vars(opts, env), to: Convolution
   end
 
   describe "convolution node" do
-    setup do
-      {:ok, shared} = Cuda.Shared.start_link()
-      log_level = Logger.level()
-      Logger.configure(level: :warn)
-      on_exit(fn -> Logger.configure(level: log_level) end)
-      [shared: shared]
-    end
+    setup ~w(disable_logging load_graph)a
 
+    @tag graph: Inference
+    @tag options: [size: {4, 4}, kernel_size: {2, 2, 2}]
+    @tag shared: %{
+      weights: %{network: [[1.0, 2.0, 3.0, 4.0],
+                           [5.0, 6.0, 7.0, 8.0]]},
+      biases:  %{network: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}
+    }
     test "simple convolution", ctx do
       i = [0.1, 0.2, 0.3, 0.4,
            0.5, 0.6, 0.7, 0.8,
            1.0, 0.1, 0.2, 0.3,
            0.4, 0.5, 0.6, 0.7]
-      w = [[1.0, 2.0,
-            3.0, 4.0],
-           [5.0, 6.0,
-            7.0, 8.0]]
-      b = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-      opts = [network: Wrapper,
-              shared_pid: ctx[:shared],
-              shared: %{weights: %{network: w}, biases: %{network: b}},
-              network_options: [size: {4, 4}, kernel_size: {2, 2, 2}]]
-      {:ok, worker} = Cuda.Worker.start_link(opts)
+      {:ok, worker} = Cuda.Worker.start_link(ctx[:worker_options])
       {:ok, o} = Cuda.Worker.run(worker, %{input: i})
 
       # 4.4 = 0.1 * 1.0 + 0.2 * 2.0 + 0.5 * 3.0 + 0.6 * 4.0
@@ -61,20 +63,20 @@ defmodule Neuro.Nodes.ConvolutionTest do
       ]
     end
 
+    @tag graph: Inference
+    @tag options: [size: {4, 4}, kernel_size: {2, 2, 2}]
+    @tag shared: %{
+      weights: %{network: [[1.0, 2.0, 3.0, 4.0],
+                           [-5.0, -6.0, -7.0, -8.0]]},
+      biases:  %{network: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}
+    }
     test "relu activation", ctx do
       i = [0.1, 0.2, 0.3, 0.4,
            0.5, 0.6, 0.7, 0.8,
            1.0, 0.1, 0.2, 0.3,
            0.4, 0.5, 0.6, 0.7]
-      w = [[1.0, 2.0, 3.0, 4.0],
-           [-5.0, -6.0, -7.0, -8.0]]
-      b = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-      opts = [network: Wrapper,
-              shared_pid: ctx[:shared],
-              shared: %{weights: %{network: w}, biases: %{network: b}},
-              network_options: [size: {4, 4}, kernel_size: {2, 2, 2}]]
-      {:ok, worker} = Cuda.Worker.start_link(opts)
+      {:ok, worker} = Cuda.Worker.start_link(ctx[:worker_options])
       {:ok, o} = Cuda.Worker.run(worker, %{input: i})
 
       assert o.output |> round!() == [
@@ -86,6 +88,24 @@ defmodule Neuro.Nodes.ConvolutionTest do
          [0.0, 0.0, 0.0],
          [0.0, 0.0, 0.0]]
       ]
+    end
+
+    @tag graph: BackPropagation
+    @tag options: [size: {3, 3}, kernel_size: {2, 2}, back_propagation: true]
+    @tag shared: %{
+      weights: %{network: [1.0, 2.0, 3.0, 4.0]},
+      biases:  %{network: [0.0, 0.0, 0.0, 0.0]}
+    }
+    test "back propagation", ctx do
+      i = [0.1, 0.2, 0.3, 0.4]
+      r = [1.0, 2.0, 3.0, 4.0]
+      inf = [11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0]
+
+      {:ok, worker} = Cuda.Worker.start_link(ctx[:worker_options])
+      {:ok, _o} = Cuda.Worker.run(worker, %{output: i, result: r, inference: inf})
+      #IO.inspect(o)
+      {:ok, _shared} = Shared.vars(ctx[:shared_pid])
+      #IO.inspect(shared.weights.network)
     end
   end
 end

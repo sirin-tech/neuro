@@ -1,51 +1,42 @@
-defmodule Neuro.Nodes.Base do
+defmodule Neuro.Layers.Base do
   defmacro __using__(opts) do
-    proto = Keyword.get(opts, :proto, Cuda.Graph.GPUNode)
+    proto = Keyword.get(opts, :proto, Cuda.Graph)
     quote do
       use unquote(proto)
       import unquote(__MODULE__)
 
       def vars(_opts, _env), do: %{}
-      def shared(_layer, _vars), do: nil
 
-      def __assigns__(_id, opts, env) do
+      def __assigns__(id, opts, env) do
+        vars = opts |> vars(env) |> Map.merge(%{layer: id})
         back_propagation = Keyword.get(opts, :back_propagation) == true
-        predefined = %{
+        %{vars: vars,
           back_propagation: back_propagation,
-          training: back_propagation || Keyword.get(opts, :training) == true,
-          layer: Keyword.fetch!(opts, :layer)
-        }
+          training: back_propagation || Keyword.get(opts, :training) == true}
+      end
 
-        overrides = opts |> Keyword.take(~w(f float_size)a) |> Enum.into(%{})
-        overrides = env
-                    |> Map.take(~w(float_size)a)
-                    |> Map.put(:f, Cuda.Env.f(env))
-                    |> Map.merge(overrides)
+      def __child_options__(_, _, %{assigns: %{vars: %{layer: layer} = assigns}}) do
+        assigns
+        |> Map.take(~w(back_propagation training)a)
+        |> Enum.into([])
+        |> Keyword.merge(layer: layer)
+      end
 
-        vars = opts
-               |> Keyword.merge(overrides |> Enum.into([]))
-               |> vars(env)
-               |> Enum.into(%{})
-               |> Map.merge(predefined)
-               |> Map.merge(overrides)
-
-        shared = case shared(predefined.layer, vars) do
-          nil ->
-            %{}
-          shared ->
-            if predefined.back_propagation do
-              memory = shared
-                       |> Map.get(:shared, %{})
-                       |> Map.merge(%{speed: overrides.f})
-              %{shared: Map.put(shared, :shared, memory)}
-            else
-              %{shared: shared}
-            end
+      def __compile__(%{id: id, assigns: %{back_propagation: true}} = node) do
+        case id |> Cuda.Graph.Node.string_id() |> String.split("__") do
+          ["back_propagation" | id] ->
+            id = ["inference" | id] |> Enum.join("__")
+            {:ok, Cuda.Graph.NodeProto.assign(node, :alias, id)}
+          _ ->
+            {:ok, node}
         end
-
-        predefined
-        |> Map.merge(shared)
-        |> Map.merge(%{vars: vars})
+      end
+      def __compile__(%{id: id} = node) do
+        assigns = case Keyword.get(node.assigns.options, :alias) do
+          nil -> %{}
+          a   -> %{alias: a}
+        end
+        {:ok, Cuda.Graph.NodeProto.assign(node, assigns)}
       end
 
       def __pins__(%{back_propagation: true, env: env, vars: vars}) do
@@ -63,7 +54,7 @@ defmodule Neuro.Nodes.Base do
          output(:output, output_type(vars, env), layout)]
       end
 
-      defoverridable __pins__: 1, shared: 2, vars: 2
+      defoverridable __child_options__: 3, __compile__: 1, __pins__: 1, vars: 2
     end
   end
 

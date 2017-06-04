@@ -18,14 +18,10 @@ defmodule Neuro.Nodes.Convolution do
 
   defp inference_ptx() do
     """
-    .version 5.0
-    .target sm_30
-    .address_size 64
-
     <%= defkernel ctx, "inference", shared: u64.ptr do %>
       .reg .u64   %cd<4>, %x, %y, %z;
       .reg .u32   %c<2>;
-      .reg .<%= var(ctx, :f) %> %f<3>;
+      .reg .<%= var(:f) %> %f<3>;
       .reg .pred  p;
 
       ld.param.u64  %cd0, [pins];
@@ -35,55 +31,56 @@ defmodule Neuro.Nodes.Convolution do
       cvt.u64.u32   %z, %ctaid.x;
 
       // (%cd2) input.offset = input + (tid.x * sx + tid.y * sy * x) * float_size
-      mul.lo.u64    %cd2, %x, <%= var(ctx, :sx) %>;
-      mad.lo.u64    %cd2, %y, <%= var(ctx, :sy) * var(ctx, :x) %>, %cd2;
-      mad.lo.u64    %cd2, %cd2, <%= var(ctx, :float_size) %>, %cd0;
-      <%= if pin_offset(ctx, :input) > 0 do %>
-        add.u64       %cd2, %cd2, <%= pin_offset(ctx, :input) %>;
+      mul.lo.u64    %cd2, %x, <%= var(:sx) %>;
+      mad.lo.u64    %cd2, %y, <%= var(:sy) * var(:x) %>, %cd2;
+      mad.lo.u64    %cd2, %cd2, <%= var(:float_size) %>, %cd0;
+      <%= if pin_offset(:input) > 0 do %>
+        add.u64       %cd2, %cd2, <%= pin_offset(:input) %>;
       <% end %>
 
       // (%cd1) w.offset = w + tid.z * wx * wy * float_size
-      mad.lo.u64    %cd1, %z, <%= var(ctx, :wx) * var(ctx, :wy) * var(ctx, :float_size) %>, %cd1;
-      <%= if shared_offset(ctx, :weights) > 0 do %>
-        add.u64     %cd1, %cd1, <%= shared_offset(ctx, :weights) %>;
+      mad.lo.u64    %cd1, %z, <%= var(:wx) * var(:wy) * var(:float_size) %>, %cd1;
+      <%= if shared_offset(:weights) > 0 do %>
+        add.u64     %cd1, %cd1, <%= shared_offset(:weights) %>;
       <% end %>
 
       // (%cd3) output.offset = output + (tid.z * ox * oy + tid.y * ox + tid.x) * float_size
-      mad.lo.u64    %cd3, %y, <%= var(ctx, :ox) %>, %x;
-      mad.lo.u64    %cd3, %z, <%= var(ctx, :ox) * var(ctx, :oy) %>, %cd3;
-      mad.lo.u64    %cd3, %cd3, <%= var(ctx, :float_size) %>, %cd0;
-      <%= if pin_offset(ctx, :output) > 0 do %>
-        add.u64       %cd3, %cd3, <%= pin_offset(ctx, :output) %>;
+      mad.lo.u64    %cd3, %y, <%= var(:ox) %>, %x;
+      mad.lo.u64    %cd3, %z, <%= var(:ox) * var(:oy) %>, %cd3;
+      mad.lo.u64    %cd3, %cd3, <%= var(:float_size) %>, %cd0;
+      <%= if pin_offset(:output) > 0 do %>
+        add.u64     %cd3, %cd3, <%= pin_offset(:output) %>;
       <% end %>
 
       // %f0 - accumulator
       mov.f32       %f0, 0.0;
       // %c1 - wy
-      mov.u32       %c1, <%= var(ctx, :wy) %>;
+      mov.u32       %c1, <%= var(:wy) %>;
 
     loop_y:
-      mov.u32       %c0, <%= var(ctx, :wx) %>;
+      mov.u32       %c0, <%= var(:wx) %>;
     loop_x:
       // acc = acc + [input] * [w]
-      ld.global.<%= var(ctx, :f) %> %f1, [%cd1];
-      ld.global.<%= var(ctx, :f) %> %f2, [%cd2];
-      mad.rn.<%= var(ctx, :f) %>    %f0, %f1, %f2, %f0;
+      ld.global.<%= var(:f) %> %f1, [%cd1];
+      ld.global.<%= var(:f) %> %f2, [%cd2];
+      mad.rn.<%= var(:f) %>    %f0, %f1, %f2, %f0;
       // next point
-      add.u64       %cd1, %cd1, <%= var(ctx, :float_size) %>;
-      add.u64       %cd2, %cd2, <%= var(ctx, :float_size) %>;
+      add.u64       %cd1, %cd1, <%= var(:float_size) %>;
+      add.u64       %cd2, %cd2, <%= var(:float_size) %>;
       // count x
       sub.u32       %c0, %c0, 1;
       setp.ne.u32   p, %c0, 0;
       @p bra        loop_x;
       // next line
-      add.u64       %cd2, %cd2, <%= (var(ctx, :x) - var(ctx, :wx)) * var(ctx, :float_size) %>;
+      add.u64       %cd2, %cd2, <%= (var(:x) - var(:wx)) * var(:float_size) %>;
       // count y
       sub.u32       %c1, %c1, 1;
       setp.ne.u32   p, %c1, 0;
       @p bra        loop_y;
 
       <%= include ctx, var(ctx, :activation), in: "f0", pred: "p" %>
-      st.global.<%= var(ctx, :f) %> [%cd3], %f0;
+      st.global.<%= var(:f) %> [%cd3], %f0;
+      //st.global.<%= var(:f) %> [%cd3], %f1;
       ret;
     <% end %>
     """
@@ -91,10 +88,6 @@ defmodule Neuro.Nodes.Convolution do
 
   defp back_ptx() do
     """
-    .version 5.0
-    .target sm_30
-    .address_size 64
-
     <%= defkernel ctx, "back", shared: u64.ptr do %>
       ret;
     <% end %>
@@ -105,9 +98,7 @@ defmodule Neuro.Nodes.Convolution do
     {x, y, z}    = opts |> Keyword.get(:size) |> Base.triple_size()
     {wx, wy, wz} = opts |> Keyword.get(:kernel_size) |> Base.triple_size()
     {sx, sy}     = opts |> Keyword.get(:stride) |> Base.stride()
-    float_size   = opts |> Keyword.get(:float_size) |> Base.float_size()
     activation   = opts |> Keyword.get(:activation, :relu) |> Base.activation()
-    f = "f#{float_size * 8}"
 
     ox = round((x - wx + sx) / sx)
     oy = round((y - wy + sy) / sy)
@@ -120,8 +111,7 @@ defmodule Neuro.Nodes.Convolution do
       wx: wx, wy: wy, wz: wz,
       sx: sx, sy: sy,
       grid: grid, block: block,
-      activation: activation,
-      f: f, float_size: float_size}
+      activation: activation}
   end
 
   def cta(ox, oy, oz, info) do
@@ -139,9 +129,7 @@ defmodule Neuro.Nodes.Convolution do
   end
 
   def shared(key, vars) do
-    #vars = vars.conv_vars
-    shared = %{weights: {vars.f, vars.wx * vars.wy * vars.wz},
-               biases:  {vars.f, vars.wx * vars.wy * vars.wz}}
-    Map.put(%{}, key, shared)
+    %{shared: %{weights: %{key => {vars.f, vars.wx * vars.wy * vars.wz}},
+                biases:  %{key => {vars.f, vars.wx * vars.wy * vars.wz}}}}
   end
 end

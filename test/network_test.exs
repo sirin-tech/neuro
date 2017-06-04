@@ -18,14 +18,25 @@ defmodule Neuro.NetworkTest do
     end
   end
 
-  describe "Network" do
-    setup do
-      log_level = Logger.level()
-      Logger.configure(level: :warn)
-      on_exit(fn ->
-        Logger.configure(level: log_level)
-      end)
+  # TODO: BackNetwork needed only to run tests in parallel because network
+  #       module name used to name Registry. To resolve this we should add
+  #       something like `name` option that will override default naming
+  defmodule BackNetwork do
+    use Network
+
+    input  {3, 3}
+    output 3
+
+    def graph(graph) do
+      graph
+      |> chain(:conv, Layers.Convolution, kernel_size: {2, 2})
+      |> chain(:fc,   Layers.FullyConnected, out_size: 3)
+      |> close()
     end
+  end
+
+  describe "Network" do
+    setup ~w(disable_logging)a
 
     test "simple network" do
       i = [0.1, 0.2, 0.3,
@@ -45,8 +56,8 @@ defmodule Neuro.NetworkTest do
         }
       }
 
-      SimpleNetwork.start_link(shared: shared)
-      {:ok, o} = SimpleNetwork.run(%{input: i})
+      {:ok, _} = Network.start_link(SimpleNetwork, shared: %{shared: shared})
+      {:ok, o} = Network.run(SimpleNetwork, %{input: i})
       # conv output: [[4.4, 5.4, 5.1, 3.1]]
       assert round!(o.output) == [4.3, 42.9, 429.0]
     end
@@ -70,9 +81,9 @@ defmodule Neuro.NetworkTest do
         }
       }
 
-      SimpleNetwork.start_link(shared: shared, network_options: [type: :training])
-      {:ok, o} = SimpleNetwork.run(%{input: i, reply: r})
-      IO.inspect(o)
+      {:ok, _} = Network.start_link(BackNetwork, shared: %{shared: shared}, network_options: [type: :training])
+      {:ok, _o} = Network.run(BackNetwork, %{input: i, reply: r})
+      #IO.inspect(o)
     end
   end
 end

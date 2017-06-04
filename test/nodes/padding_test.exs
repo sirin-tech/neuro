@@ -5,7 +5,7 @@ defmodule Neuro.Nodes.PaddingTest do
   import Neuro.Test.NodesHelpers
 
   defmodule Wrapper do
-    use Neuro.Nodes.Base, proto: Cuda.Graph
+    use Neuro.Layers.Base
 
     def __graph__(graph) do
       graph |> chain(:padding, Padding, graph.assigns.options) |> close()
@@ -15,20 +15,16 @@ defmodule Neuro.Nodes.PaddingTest do
   end
 
   describe "padding node" do
-    setup do
-      log_level = Logger.level()
-      Logger.configure(level: :error)
-      on_exit(fn -> Logger.configure(level: log_level) end)
-    end
+    setup ~w(disable_logging load_graph)a
 
-    test "simple padding" do
+    @tag graph: Wrapper
+    @tag options: [size: {3, 3}, padding_size: {1, 1}, padding: 1.0]
+    test "simple padding", ctx do
       i = [0.1, 0.2, 0.3,
            0.5, 0.6, 0.7,
            1.0, 0.1, 0.2]
 
-      opts = [network: Wrapper,
-              network_options: [size: {3, 3}, padding_size: {1, 1}, padding: 1.0]]
-      {:ok, worker} = Cuda.Worker.start_link(opts)
+      {:ok, worker} = Cuda.Worker.start_link(ctx[:worker_options])
       {:ok, o} = Cuda.Worker.run(worker, %{input: i})
 
       # 4.4 = 0.1 * 1.0 + 0.2 * 2.0 + 0.5 * 3.0 + 0.6 * 4.0

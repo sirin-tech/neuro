@@ -11,39 +11,27 @@ defmodule Neuro.Layers.ConvolutionTest do
       graph |> chain(:conv, Convolution, graph.assigns.options) |> close()
     end
 
-    def __assigns__(opts, env) do
-      m = Convolution.__assigns__(opts, env)
-      Map.drop(m, [:shared])
-    end
-
+    defdelegate __assigns__(id, opts, env), to: Convolution
     defdelegate __pins__(assings), to: Convolution
   end
 
-  describe "convolution layer" do
-    setup do
-      {:ok, shared} = Cuda.Shared.start_link()
-      log_level = Logger.level()
-      Logger.configure(level: :error)
-      on_exit(fn -> Logger.configure(level: log_level) end)
-      [shared: shared]
-    end
+  describe "simple convolution layer" do
+    setup ~w(disable_logging load_graph)a
 
+    @tag graph: Wrapper
+    @tag options: [size: {4, 4}, kernel_size: {2, 2, 2}]
+    @tag shared: %{
+      weights: %{conv: [[1.0, 2.0, 3.0, 4.0],
+                        [5.0, 6.0, 7.0, 8.0]]},
+      biases:  %{conv: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}
+    }
     test "simple convolution", ctx do
       i = [0.1, 0.2, 0.3, 0.4,
            0.5, 0.6, 0.7, 0.8,
            1.0, 0.1, 0.2, 0.3,
            0.4, 0.5, 0.6, 0.7]
-      w = [[1.0, 2.0,
-            3.0, 4.0],
-           [5.0, 6.0,
-            7.0, 8.0]]
-      b = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-      opts = [network: Wrapper,
-              shared_pid: ctx[:shared],
-              shared: %{weights: %{conv: w}, biases: %{conv: b}},
-              network_options: [size: {4, 4}, kernel_size: {2, 2, 2}]]
-      {:ok, worker} = Cuda.Worker.start_link(opts)
+      {:ok, worker} = Cuda.Worker.start_link(ctx[:worker_options])
       {:ok, o} = Cuda.Worker.run(worker, %{input: i})
 
       # 4.4 = 0.1 * 1.0 + 0.2 * 2.0 + 0.5 * 3.0 + 0.6 * 4.0
@@ -60,20 +48,19 @@ defmodule Neuro.Layers.ConvolutionTest do
       ]
     end
 
+    @tag graph: Wrapper
+    @tag options: [size: {2, 2},
+                   kernel_size: {2, 2, 2},
+                   padding: {1, 1}]
+    @tag shared: %{
+      weights: %{conv: [[1.0, 2.0, 3.0, 4.0],
+                        [5.0, 6.0, 7.0, 8.0]]},
+      biases:  %{conv: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}
+    }
     test "convolution with padding", ctx do
-      i = [0.1, 0.2,
-           0.5, 0.6]
-      w = [[1.0, 2.0,
-            3.0, 4.0],
-           [5.0, 6.0,
-            7.0, 8.0]]
-      b = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+      i = [0.1, 0.2, 0.5, 0.6]
 
-      opts = [network: Wrapper,
-              shared_pid: ctx[:shared],
-              shared: %{weights: %{conv: w}, biases: %{conv: b}},
-              network_options: [size: {2, 2}, kernel_size: {2, 2, 2}, padding: {1, 1}]]
-      {:ok, worker} = Cuda.Worker.start_link(opts)
+      {:ok, worker} = Cuda.Worker.start_link(ctx[:worker_options])
       {:ok, o} = Cuda.Worker.run(worker, %{input: i})
 
       assert o.output |> round!() == [
@@ -87,26 +74,22 @@ defmodule Neuro.Layers.ConvolutionTest do
       ]
     end
 
+    @tag graph: Wrapper
+    @tag options: [size: {3, 3},
+                   kernel_size: {2, 2, 2},
+                   padding: {1, 1},
+                   pooling: [pooling: {2, 2}, stride: {2, 2}]]
+    @tag shared: %{
+      weights: %{conv: [[1.0, 2.0, 3.0, 4.0],
+                        [5.0, 6.0, 7.0, 8.0]]},
+      biases:  %{conv: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}
+    }
     test "convolution with padding and pooling", ctx do
       i = [0.1, 0.2, 0.3,
            0.5, 0.6, 0.8,
            1.0, 0.1, 0.2]
-      w = [[1.0, 2.0,
-            3.0, 4.0],
-           [5.0, 6.0,
-            7.0, 8.0]]
-      b = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-      opts = [network: Wrapper,
-              shared_pid: ctx[:shared],
-              shared: %{weights: %{conv: w}, biases: %{conv: b}},
-              network_options: [
-                size: {3, 3},
-                kernel_size: {2, 2, 2},
-                padding: {1, 1},
-                pooling: [pooling: {2, 2}, stride: {2, 2}
-              ]]]
-      {:ok, worker} = Cuda.Worker.start_link(opts)
+      {:ok, worker} = Cuda.Worker.start_link(ctx[:worker_options])
       {:ok, o} = Cuda.Worker.run(worker, %{input: i})
 
       # Without pooling:

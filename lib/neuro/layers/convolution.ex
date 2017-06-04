@@ -1,18 +1,22 @@
 defmodule Neuro.Layers.Convolution do
   alias Neuro.Nodes
-  alias Neuro.Nodes.Base
-  use Base, proto: Cuda.Graph
+  use Neuro.Layers.Base
 
   def __pins__(assigns) do
-    i = input_type(assigns.vars)
+    i = input_type(assigns.vars, assigns.env)
     o = case assigns.vars do
       %{pooling_vars: pv} -> pv
       %{conv_vars: cv}    -> cv
     end
-    o = output_type(o)
+    o = output_type(o, assigns.env)
+    layout = case Map.get(assigns, :training) do
+      true -> :fixed
+      _    -> :floating
+    end
     case Map.get(assigns, :back_propagation) do
-      true -> [input(:output, o), output(:input, i), input(:result, o)]
-      _    -> [input(:input, i), output(:output, o)]
+      true -> [input(:output, o), output(:input, i), input(:result, o, :fixed),
+               input(:inference, i, :fixed)]
+      _    -> [input(:input, i, layout), output(:output, o, layout)]
     end
   end
 
@@ -27,7 +31,7 @@ defmodule Neuro.Layers.Convolution do
             |> add(:conv_node, Nodes.Convolution)
             |> link(next, {:conv_node, :output})
             |> link(:result, {:conv_node, :result})
-            #|> link({:conv_node, :input})
+            |> link(:inference, {:conv_node, :inference})
     graph = case vars.padding do
       false -> graph
       _     -> graph |> chain(:padding_node, Nodes.Padding)
@@ -48,13 +52,17 @@ defmodule Neuro.Layers.Convolution do
     graph |> close()
   end
 
-  def __child_options__(:pooling_node, _, %{assigns: %{vars: %{pooling: opts}}}), do: opts
-  def __child_options__(:padding_node, _, %{assigns: %{vars: %{padding: opts}}}), do: opts
-  def __child_options__(:conv_node,    _, %{assigns: %{vars: %{conv: opts}}}), do: opts
-  def __child_options__(_, _, _), do: []
+  def __child_options__(id, module, %{assigns: %{vars: vars}} = graph) do
+    Keyword.merge(super(id, module, graph), child_options(id, vars))
+  end
+
+  defp child_options(:pooling_node, %{pooling: opts}), do: opts
+  defp child_options(:padding_node, %{padding: opts}), do: opts
+  defp child_options(:conv_node,    %{conv: opts}), do: opts
+  defp child_options(_, _), do: []
 
   def vars(opts, env) do
-    {x, y, z}  = opts |> Keyword.get(:size) |> Base.triple_size()
+    {x, y, z}  = opts |> Keyword.get(:size) |> Neuro.Layers.Base.triple_size()
     vars = opts
            |> Enum.into(%{})
            |> Map.merge(%{x: x, y: y, z: z})
@@ -68,16 +76,9 @@ defmodule Neuro.Layers.Convolution do
     vars
   end
 
-  #def shared(vars) do
-  #  vars = vars.conv_vars
-  #  %{weights: {vars.f, vars.wx * vars.wy * vars.wz},
-  #    biases:  {vars.f, vars.wx * vars.wy * vars.wz}}
-  #end
-
   defp process_padding(%{padding: p} = vars, env) do
     with p when is_list(p) <- padding(p) do
-      p = Keyword.merge(p, size: {vars.x, vars.y, vars.z},
-                           float_size: vars.float_size)
+      p = Keyword.merge(p, size: {vars.x, vars.y, vars.z})
       vars
       |> Map.put(:padding, p)
       |> Map.put(:padding_vars, Nodes.Padding.vars(p, env))
@@ -93,8 +94,7 @@ defmodule Neuro.Layers.Convolution do
     c = vars
         |> Map.drop([:padding, :padding_vars, :pooling, :shared])
         |> Enum.into([])
-        |> Keyword.merge(size: {pv.ox, pv.oy, pv.oz},
-                         float_size: vars.float_size)
+        |> Keyword.merge(size: {pv.ox, pv.oy, pv.oz})
     vars
     |> Map.put(:conv, c)
     |> Map.put(:conv_vars, Nodes.Convolution.vars(c, env))
@@ -103,8 +103,7 @@ defmodule Neuro.Layers.Convolution do
     c = vars
         |> Map.drop([:padding, :padding_vars, :pooling, :shared])
         |> Enum.into([])
-        |> Keyword.merge(size: {vars.x, vars.y, vars.z},
-                         float_size: vars.float_size)
+        |> Keyword.merge(size: {vars.x, vars.y, vars.z})
     vars
     |> Map.put(:conv, c)
     |> Map.put(:conv_vars, Nodes.Convolution.vars(c, env))
@@ -112,8 +111,7 @@ defmodule Neuro.Layers.Convolution do
 
   defp process_pooling(%{pooling: p, conv_vars: cv} = vars, env) do
     with p when is_list(p) <- pooling(p) do
-      p = Keyword.merge(p, size: {cv.ox, cv.oy, cv.oz},
-                           float_size: vars.float_size)
+      p = Keyword.merge(p, size: {cv.ox, cv.oy, cv.oz})
       vars
       |> Map.put(:pooling, p)
       |> Map.put(:pooling_vars, Nodes.Pooling.vars(p, env))

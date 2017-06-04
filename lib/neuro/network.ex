@@ -1,11 +1,11 @@
 defmodule Neuro.Network do
-  # alias Cuda.Graph.Factory
-  # alias Cuda.Graph.Node
+  use Supervisor
+  alias Cuda.{Graph, Graph.GPUNode, Memory}
 
   @pins     __MODULE__.Pins
   @f        __MODULE__.F
-  @vars     __MODULE__.Vars
-  @exports  input: 1, input: 2, output: 1, output: 2
+  @exports  collect_shared: 1, input: 1, input: 2, load_network: 2,
+            output: 1, output: 2
 
   defmacro __using__(opts) do
     float_size = opts |> Keyword.get(:float_size) |> Neuro.Nodes.Base.float_size
@@ -16,15 +16,48 @@ defmodule Neuro.Network do
       use Cuda.Graph
 
       @before_compile unquote(__MODULE__)
+      @cuda   __MODULE__.Cuda
+      @shared __MODULE__.Shared
+      @worker __MODULE__.Worker
       import unquote(__MODULE__), only: unquote(@exports)
 
       Module.register_attribute(__MODULE__, unquote(@pins), accumulate: true)
       Module.register_attribute(__MODULE__, unquote(@f), [])
       Module.put_attribute(__MODULE__, unquote(@f), unquote(f))
 
+      def __cuda__(), do: @cuda
+
       def start_link(opts \\ []) do
         {name, opts} = Keyword.pop(opts, :name, __MODULE__)
         Supervisor.start_link(__MODULE__, opts, name: name)
+      end
+
+      def init(opts) do
+        opts = Keyword.merge(opts, cuda: @cuda)
+        shared_values = Keyword.get(opts, :shared, %{})
+        with %{} = graph   <- load_network(__MODULE__, opts),
+             {:ok, shared} <- collect_shared(graph) do
+          children = [supervisor(Registry, [:unique, @shared])]
+          {children, shared} = Enum.reduce(shared, {children, %{}}, fn {k, memory}, {children, shared} ->
+            name = {:via, Registry, {@shared, k}}
+            memory = Memory.new(memory, :shared)
+            shared_opts = case Map.get(shared_values, k) do
+              nil    -> []
+              values -> [vars: values]
+            end
+            shared_opts = shared_opts
+                          |> Keyword.merge(memory: memory, name: name)
+            {children ++ [worker(Cuda.Shared, [shared_opts])], Map.put(shared, k, memory)}
+          end)
+          memory = graph.assigns |> Map.get(:memory, %{}) |> Map.merge(shared)
+          graph = Cuda.Graph.NodeProto.assign(graph, :memory, memory)
+          shared = shared
+                   |> Enum.map(fn {k, _} -> {k, {:via, Registry, {@shared, k}}} end)
+                   |> Enum.into(%{})
+          opts = Keyword.merge(opts, graph: graph, shared: shared, name: @worker)
+          children = children ++ [worker(Cuda.Worker, [opts])]
+          supervise(children, strategy: :one_for_one)
+        end
       end
 
       # Cuda.Graph behaviour
@@ -32,6 +65,7 @@ defmodule Neuro.Network do
         opts |> Enum.into(%{}) |> unquote(__MODULE__).vars
       end
       def __graph__(%{assigns: %{options: opts}} = graph) do
+        #IO.inspect(opts)
         case Keyword.get(opts, :type) do
           :training         -> unquote(__MODULE__).make_training_graph(graph)
           :back_propagation -> unquote(__MODULE__).make_back_propagation_graph(graph)
@@ -40,7 +74,8 @@ defmodule Neuro.Network do
       end
       def __child_options__(_id, _module, %{nodes: [], assigns: %{options: opts}} = graph) do
         import Cuda.Graph.Node, only: [input_pin_types: 0]
-        opts = [float_size: Keyword.get(opts, :float_size, unquote(float_size))]
+        opts = [float_size: Keyword.get(opts, :float_size, unquote(float_size)),
+                training: Keyword.get(opts, :training)]
         with [input | _] <- graph |> Cuda.Graph.NodeProto.pins(input_pin_types()),
              {_, type} = input.data_type do
           Keyword.put(opts, :size, type)
@@ -50,7 +85,8 @@ defmodule Neuro.Network do
       end
       def __child_options__(_id, _module, %{nodes: [last | _], assigns: %{options: opts}}) do
         import Cuda.Graph.Node, only: [output_pin_types: 0]
-        opts = [float_size: Keyword.get(opts, :float_size, unquote(float_size))]
+        opts = [float_size: Keyword.get(opts, :float_size, unquote(float_size)),
+                training: Keyword.get(opts, :training)]
         with [output | _] <- last |> Cuda.Graph.NodeProto.pins(output_pin_types()),
              {_, type} = output.data_type do
           Keyword.put(opts, :size, type)
@@ -58,29 +94,18 @@ defmodule Neuro.Network do
           _ -> opts
         end
       end
-      def __child_options__(_id, _module, _graph) do
-        []
-      end
-
-      def init(opts) do
-        opts = Keyword.merge(opts, network: __MODULE__,
-                                   shared_pid: unquote(@vars),
-                                   name: __MODULE__.Worker)
-        children = [
-          worker(Cuda.Shared, [[name: unquote(@vars)]]),
-          worker(Cuda.Worker, [opts])
-        ]
-        supervise(children, strategy: :one_for_one)
+      def __child_options__(_id, _module, %{assigns: %{options: opts}}) do
+        [training: Keyword.get(opts, :training)]
       end
 
       def graph(graph), do: graph
 
       def run(input) do
-        Cuda.Worker.run(__MODULE__.Worker, input)
+        Cuda.Worker.run(@worker, input)
       end
 
       def gpu_info() do
-        Cuda.Worker.gpu_info(__MODULE__.Worker)
+        Cuda.device_info(@cuda)
       end
 
       defoverridable graph: 1
@@ -95,6 +120,10 @@ defmodule Neuro.Network do
         case Keyword.get(assigns.options, :type) do
           :training ->
             pins = unquote(pins)
+            pins = pins |> Enum.map(fn
+              %{type: :input} = pin -> %{pin | layout: :fixed}
+              pin -> pin
+            end)
             output = pins |> Enum.find(& &1.type in output_pin_types())
             reply = %{output | id: :reply, type: :input}
             pins ++ [reply]
@@ -105,7 +134,12 @@ defmodule Neuro.Network do
               _, pins -> pins
             end)
           _ ->
-            unquote(pins)
+            pins = unquote(pins)
+            if Keyword.get(assigns.options, :training) == true do
+              Enum.map(pins, & %{&1 | layout: :fixed})
+            else
+              pins
+            end
         end
       end
     end
@@ -142,51 +176,56 @@ defmodule Neuro.Network do
   end
 
   def make_training_graph(%{assigns: %{options: options}} = graph) do
-    iopts = Keyword.drop(options, [:type])
+    iopts = options
+            |> Keyword.drop([:type])
+            |> Keyword.merge(training: true)
     graph = graph |> Cuda.Graph.add(:inference, graph.module, iopts)
     inference = Cuda.Graph.GraphProto.node(graph, :inference)
 
     bopts = Keyword.merge(iopts, type: :back_propagation, inference: inference)
     graph = graph |> Cuda.Graph.add(:back_propagation, graph.module, bopts)
-    back = Cuda.Graph.GraphProto.node(graph, :back_propagation)
+    #back = Cuda.Graph.GraphProto.node(graph, :back_propagation)
 
-    eopts = [input: Cuda.Graph.NodeProto.pin(inference, :output),
-             output: Cuda.Graph.NodeProto.pin(back, :input)]
+    e_size = Cuda.Graph.Pin.data_arity(Cuda.Graph.NodeProto.pin(inference, :output))
+
     graph = graph
-    |> Cuda.Graph.add(:error, Neuro.Nodes.Error, eopts)
+    |> Cuda.Graph.add(:error, Neuro.Nodes.Error, size: e_size)
     |> Cuda.Graph.link(:input, {:inference, :input})
     |> Cuda.Graph.link(:reply, {:error, :reply})
     |> Cuda.Graph.link({:inference, :output}, {:error, :input})
     |> Cuda.Graph.link({:error, :output}, {:back_propagation, :output})
     |> Cuda.Graph.link({:back_propagation, :input}, :output)
 
-    shared = graph |> collect_shared(%{})
-
     graph = graph
     |> Cuda.Graph.Processing.expand
     graph = graph.nodes |> Enum.reduce(graph, fn
       %{id: id, type: :gpu}, graph when is_tuple(id) and elem(id, 0) == :inference ->
         back_id = put_elem(id, 0, :back_propagation)
-        #IO.inspect({id, back_id})
         graph |> Cuda.Graph.link({id, :output}, {back_id, :result})
       _, graph ->
         graph
     end)
+    graph = graph |> Cuda.Graph.Processing.precompile_wrap()
+    graph = graph.nodes |> Enum.reduce(graph, fn
+      %{type: :computation_graph} = comp, graph ->
+        comp = comp.links |> Enum.reduce(comp, fn
+          {src, {dst, _}}, comp when is_tuple(dst) and elem(dst, 0) == :inference ->
+            src = case src do
+              {:__self__, src} -> src
+              src              -> src
+            end
+            back_id = put_elem(dst, 0, :back_propagation)
+            comp |> Cuda.Graph.link(src, {back_id, :inference})
+          _, comp ->
+            comp
+        end)
+        Cuda.Graph.GraphProto.replace(graph, comp)
+      _, graph ->
+        graph
+    end)
     #|> IO.inspect
-    # IO.puts(dump(graph |> Cuda.Graph.Processing.expand))
-    #graph
-    Cuda.Graph.NodeProto.assign(graph, :shared, shared)
+    graph
   end
-
-  defp collect_shared(%{nodes: nodes} = graph, shared) do
-    with {:ok, graph} <- graph.module.__compile__(graph) do
-      shared = Map.merge(shared, Map.get(graph.assigns, :shared, %{}))
-      Enum.reduce(nodes, shared, &collect_shared/2)
-    else
-      _ -> shared
-    end
-  end
-  defp collect_shared(_node, shared), do: shared
 
   def dump(graph, indent \\ "") do
     nodes = case Map.get(graph, :nodes) do
@@ -232,4 +271,61 @@ defmodule Neuro.Network do
   def vars(opts) do
     opts
   end
+
+  def start_link(module, opts \\ []) do
+    Supervisor.start_link(__MODULE__, {module, opts})
+  end
+
+  @networks __MODULE__.Networks
+  def run(module, inputs) do
+    module.run(inputs)
+  end
+
+  def init({module, opts}) do
+    # TODO: create a wrapper supervisor to restart all others when Cuda crashed
+    opts = Keyword.merge(opts, name: {:via, Registry, {@networks, module}})
+    children = [
+      supervisor(Registry, [:unique, @networks]),
+      worker(Cuda, [[name: module.__cuda__()]]),
+      worker(module, [opts])
+    ]
+    supervise(children, strategy: :one_for_one)
+  end
+
+  def load_network(module, opts) do
+    cuda = Keyword.fetch!(opts, :cuda)
+    with {:ok, info} <- Cuda.device_info(cuda) do
+      nopts = Keyword.get(opts, :network_options, [])
+      proto = struct(Cuda.Graph.Node.proto(module))
+      env = %Cuda.Env{gpu_info: info}
+      Cuda.Graph.Factory.new(proto, :network, module, nopts, env)
+    end
+  end
+
+  defp merge_shared(_, a, b) when is_map(a) and is_map(b) do
+    Map.merge(a, b, &merge_shared/3)
+  end
+  defp merge_shared(_, _, b) do
+    b
+  end
+
+  def collect_shared(%GPUNode{assigns: %{shared: shared}}) do
+    {:ok, Map.merge(%{}, shared)}
+  end
+  def collect_shared(%{id: gid, nodes: _} = graph) do
+    Cuda.Graph.Processing.dfs(graph, fn
+      :enter, {%Graph{id: ^gid, assigns: assigns}, _}, st ->
+        {:ok, Map.merge(st, Map.get(assigns, :shared, %{}), &merge_shared/3)}
+      :enter, {%Graph{assigns: assigns} = g, _}, st ->
+        with shared <- Map.merge(st, Map.get(assigns, :shared, %{}), &merge_shared/3),
+             {:ok, nested} <- collect_shared(g) do
+          {:ok, Map.merge(shared, nested, &merge_shared/3)}
+        end
+      :enter, {%{assigns: %{shared: shared}}, _}, st ->
+        {:ok, Map.merge(st, shared, &merge_shared/3)}
+      _, _, st ->
+        {:ok, st}
+    end, %{})
+  end
+  def collect_shared(_), do: {:ok, %{}}
 end
