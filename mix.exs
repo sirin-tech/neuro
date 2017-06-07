@@ -17,7 +17,8 @@ defmodule Neuro.Mixfile do
   end
 
   defp deps do
-    [{:cuda, path: "../cuda"}]
+    [{:cuda, path: "../cuda"},
+     {:gen_stage,  "~> 0.12.0"}]
   end
 
   defp paths do
