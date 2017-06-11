@@ -13,7 +13,8 @@ defmodule Neuro.Nodes.ErrorTest do
       |> add(:error, Error, graph.assigns.options)
       |> link(:input, {:error, :input})
       |> link(:reply, {:error, :reply})
-      |> close()
+      |> link({:error, :output}, :output)
+      |> link({:error, :error}, :error)
     end
 
     defdelegate __assigns__(id, opts, env), to: Error
@@ -33,6 +34,7 @@ defmodule Neuro.Nodes.ErrorTest do
       {:ok, o} = Cuda.Worker.run(worker, %{input: i, reply: r})
 
       assert o.output |> round!(2) == [-0.23, -0.13, -0.03]
+      assert o.error |> round!(2) == 0.33
     end
   end
 end

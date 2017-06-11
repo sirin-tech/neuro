@@ -9,14 +9,16 @@ defmodule Neuro.Layers.Convolution do
       %{conv_vars: cv}    -> cv
     end
     o = output_type(o, assigns.env)
-    layout = case Map.get(assigns, :training) do
-      true -> :fixed
-      _    -> :floating
+    group = case Map.get(assigns, :training) do
+      true -> :activation
+      _    -> nil
     end
     case Map.get(assigns, :back_propagation) do
-      true -> [input(:output, o), output(:input, i), input(:result, o, :fixed),
-               input(:inference, i, :fixed)]
-      _    -> [input(:input, i, layout), output(:output, o, layout)]
+      true -> [input(:output, o),
+               output(:input, i),
+               input(:inference, i, :activation)]
+      _    -> [input(:input, i, group),
+               output(:output, o, group)]
     end
   end
 
@@ -30,7 +32,7 @@ defmodule Neuro.Layers.Convolution do
     graph = graph
             |> add(:conv_node, Nodes.Convolution)
             |> link(next, {:conv_node, :output})
-            |> link(:result, {:conv_node, :result})
+            #|> link(:result, {:conv_node, :result})
             |> link(:inference, {:conv_node, :inference})
     graph = case vars.padding do
       false -> graph

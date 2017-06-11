@@ -7,8 +7,12 @@ defmodule Neuro.Nodes.Error do
   end
 
   def __pins__(%{vars: %{size: size}, env: env}) do
-    type = {Cuda.Env.f(env), size}
-    [input(:input, type, :fixed), input(:reply, type), output(:output, type)]
+    f = Cuda.Env.f(env)
+    type = {f, size}
+    [input(:input, type, :activation),
+     input(:reply, type),
+     output(:output, type),
+     output(:error, f)]
   end
 
   def __batch__(_) do
@@ -18,7 +22,7 @@ defmodule Neuro.Nodes.Error do
   def __ptx__(_) do
     """
     <%= defkernel ctx, "error" do %>
-      .reg .u64 %input, %reply, %output, %in, %count;
+      .reg .u64 %input, %reply, %output, %error, %in, %count;
       .reg .<%= var(:f) %> %x, %y, %loss;
       .reg .pred p;
 
@@ -28,6 +32,12 @@ defmodule Neuro.Nodes.Error do
         add.u64     %reply, %input, <%= pin_offset(:reply) %>;
       <% else %>
         mov.u64     %reply, %input;
+      <% end %>
+
+      <%= if pin_offset(:error) > 0 do %>
+        add.u64     %error, %input, <%= pin_offset(:error) %>;
+      <% else %>
+        mov.u64     %error, %input;
       <% end %>
 
       <%= if pin_offset(:output) > 0 do %>
@@ -56,6 +66,7 @@ defmodule Neuro.Nodes.Error do
       @p bra loss_loop;
 
       mul.rn.<%= var(:f) %>     %loss, %loss, 0.5;
+      st.global.<%= var(:f) %>  [%error], %loss;
 
       mov.u64                   %count, 0;
     loop:

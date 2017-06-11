@@ -37,7 +37,7 @@ defmodule Neuro.Nodes.ConvolutionTest do
     @tag shared: %{
       weights: %{network: [[1.0, 2.0, 3.0, 4.0],
                            [5.0, 6.0, 7.0, 8.0]]},
-      biases:  %{network: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}
+      biases:  %{network: [0.0, 0.0]}
     }
     test "simple convolution", ctx do
       i = [0.1, 0.2, 0.3, 0.4,
@@ -62,7 +62,7 @@ defmodule Neuro.Nodes.ConvolutionTest do
     @tag shared: %{
       weights: %{network: [[1.0, 2.0, 3.0, 4.0],
                            [-5.0, -6.0, -7.0, -8.0]]},
-      biases:  %{network: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}
+      biases:  %{network: [0.0, 0.0]}
     }
     test "relu activation", ctx do
       i = [0.1, 0.2, 0.3, 0.4,
@@ -83,7 +83,7 @@ defmodule Neuro.Nodes.ConvolutionTest do
     @tag options: [size: {3, 3}, kernel_size: {2, 2}, training: true]
     @tag shared: %{
       weights: %{network: [[1.0, 2.0], [3.0, 4.0]]},
-      biases:  %{network: [0.0, 0.0, 0.0, 0.0]},
+      biases:  %{network: [0.0]},
       states:  %{network: [0.0, 0.0, 0.0, 0.0]}
     }
     test "saves neuron states in training mode", ctx do
@@ -100,8 +100,10 @@ defmodule Neuro.Nodes.ConvolutionTest do
     @tag options: [size: {3, 3}, kernel_size: {2, 2}, back_propagation: true]
     @tag shared: %{
       weights: %{network: [1.0, 2.0, 3.0, 4.0]},
-      biases:  %{network: [0.0, 0.0, 0.0, 0.0]},
-      states:  %{network: [5.0, 6.0, 7.0, 8.0]}
+      biases:  %{network: [0.0]},
+      states:  %{network: [5.0, 6.0, 7.0, 8.0]},
+      dw:      %{network: [0.0, 0.0, 0.0, 0.0]},
+      db:      %{network: [0.0]}
     }
     test "back propagation", ctx do
       i = [0.1, 0.2, 0.3, 0.4]
@@ -112,8 +114,19 @@ defmodule Neuro.Nodes.ConvolutionTest do
       assert o.input |> round! == [[0.1, 0.4, 0.4],
                                    [0.6, 2.0, 1.6],
                                    [0.9, 2.4, 1.6]]
-      {:ok, _shared} = Shared.vars(ctx[:shared_pid])
-      #assert shared.weights.network |> round!(2) == []
+
+      {:ok, shared} = Shared.vars(ctx[:shared_pid])
+      # it accumulates delta * activation for weight correction
+      assert shared.dw.network |> round!() == [1.2, 2.6, 4.5, 6.4]
+      # it accumulates delta for bias correction
+      assert shared.db.network |> round!(2) == [0.25]
+
+      {:ok, _o} = Cuda.Worker.run(worker, %{output: i, inference: inf})
+      {:ok, shared} = Shared.vars(ctx[:shared_pid])
+      # it accumulates delta * activation for weight correction
+      assert shared.dw.network |> round!() == [2.4, 5.2, 9.0, 12.8]
+      # it accumulates delta for bias correction
+      assert shared.db.network |> round!() == [0.5]
     end
   end
 end

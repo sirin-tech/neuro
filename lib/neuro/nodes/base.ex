@@ -52,15 +52,15 @@ defmodule Neuro.Nodes.Base do
         [output(:input, input_type(vars, env)),
          input(:output, output_type(vars, env)),
          #input(:result, output_type(vars, env), :fixed),
-         input(:inference, input_type(vars, env), :fixed)]
+         input(:inference, input_type(vars, env), :activation)]
       end
       def __pins__(%{env: env, vars: vars} = assigns) do
-        layout = case Map.get(assigns, :training) do
-          true -> :fixed
-          _    -> :floating
+        group = case Map.get(assigns, :training) do
+          true -> :activation
+          _    -> nil
         end
-        [input(:input,   input_type(vars, env), layout),
-         output(:output, output_type(vars, env), layout)]
+        [input(:input,   input_type(vars, env), group),
+         output(:output, output_type(vars, env), group)]
       end
 
       defoverridable __pins__: 1, shared: 2, vars: 2

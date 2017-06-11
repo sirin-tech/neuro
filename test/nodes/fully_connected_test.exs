@@ -90,7 +90,8 @@ defmodule Neuro.Nodes.FullyConnectedTest do
                            [0.5, 0.6, 0.7, 0.8]]},
       biases:  %{network: [0.0, 0.0, 0.0]},
       states:  %{network: [30.0, 0.0, 40.0]},
-      speed:   0.05
+      dw:      %{network: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]},
+      db:      %{network: [0.0, 0.0, 0.0]}
     }
     test "back propagation", ctx do
       loss = [10.0, 15.0, 20.0]
@@ -98,11 +99,25 @@ defmodule Neuro.Nodes.FullyConnectedTest do
 
       {:ok, worker} = Cuda.Worker.start_link(ctx[:worker_options])
       {:ok, o} = Cuda.Worker.run(worker, %{output: loss, inference: inf})
+      # it calculates deltas (errors)
       assert o.input |> round! == [20.0, 32.0, 44.0, 56.0]
+
       {:ok, shared} = Shared.vars(ctx[:shared_pid])
-      assert shared.weights.network |> round!(2) == [-4.5,  -4.0,  -3.5,  -3.0,
-                                                      0.1,   0.2,   0.3,   0.4,
-                                                    -10.5, -11.4, -12.3, -13.2]
+      # it accumulates delta * activation for weight correction
+      assert shared.dw.network |> round!() == [110.0, 120.0, 130.0, 140.0,
+                                               165.0, 180.0, 195.0, 210.0,
+                                               220.0, 240.0, 260.0, 280.0]
+      # it accumulates delta for bias correction
+      assert shared.db.network |> round!() == [10.0, 15.0, 20.0]
+
+      {:ok, _o} = Cuda.Worker.run(worker, %{output: loss, inference: inf})
+      {:ok, shared} = Shared.vars(ctx[:shared_pid])
+      # it accumulates delta * activation for weight correction
+      assert shared.dw.network |> round!() == [220.0, 240.0, 260.0, 280.0,
+                                               330.0, 360.0, 390.0, 420.0,
+                                               440.0, 480.0, 520.0, 560.0]
+      # it accumulates delta for bias correction
+      assert shared.db.network |> round!() == [20.0, 30.0, 40.0]
     end
   end
 end

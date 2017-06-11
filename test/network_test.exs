@@ -51,7 +51,7 @@ defmodule Neuro.NetworkTest do
                10.0, 20.0, 30.0, 40.0]
         },
         biases: %{
-          conv: [0.0, 0.0, 0.0, 0.0],
+          conv: [0.0],
           fc: [0.0, 0.0, 0.0]
         }
       }
@@ -66,7 +66,7 @@ defmodule Neuro.NetworkTest do
       i = [0.1, 0.2, 0.3,
            0.5, 0.6, 0.7,
            1.0, 0.1, 0.2]
-      r = [0.0, 0.0, 100.0]
+      r = [0.3, 40.9, 425.0]
 
       shared = %{
         weights: %{
@@ -76,13 +76,14 @@ defmodule Neuro.NetworkTest do
                10.0, 20.0, 30.0, 40.0]
         },
         biases: %{
-          conv: [0.0, 0.0, 0.0, 0.0],
+          conv: [0.0],
           fc: [0.0, 0.0, 0.0]
         }
       }
 
       {:ok, _} = Network.start_link(BackNetwork, shared: %{shared: shared}, network_options: [type: :training])
-      {:ok, _o} = Network.run(BackNetwork, %{input: i, reply: r})
+      {:ok, o} = Network.run(BackNetwork, %{input: i, reply: r})
+      assert round!(o.error) == 18.0
       #IO.inspect(o)
     end
   end

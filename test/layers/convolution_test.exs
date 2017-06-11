@@ -23,7 +23,7 @@ defmodule Neuro.Layers.ConvolutionTest do
     @tag shared: %{
       weights: %{conv: [[1.0, 2.0, 3.0, 4.0],
                         [5.0, 6.0, 7.0, 8.0]]},
-      biases:  %{conv: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}
+      biases:  %{conv: [0.0, 0.0]}
     }
     test "simple convolution", ctx do
       i = [0.1, 0.2, 0.3, 0.4,
@@ -50,7 +50,7 @@ defmodule Neuro.Layers.ConvolutionTest do
     @tag shared: %{
       weights: %{conv: [[1.0, 2.0, 3.0, 4.0],
                         [5.0, 6.0, 7.0, 8.0]]},
-      biases:  %{conv: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}
+      biases:  %{conv: [0.0, 0.0]}
     }
     test "convolution with padding", ctx do
       i = [0.1, 0.2, 0.5, 0.6]
@@ -72,7 +72,7 @@ defmodule Neuro.Layers.ConvolutionTest do
     @tag shared: %{
       weights: %{conv: [[1.0, 2.0, 3.0, 4.0],
                         [5.0, 6.0, 7.0, 8.0]]},
-      biases:  %{conv: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}
+      biases:  %{conv: [0.0, 0.0]}
     }
     test "convolution with padding and pooling", ctx do
       i = [0.1, 0.2, 0.3,

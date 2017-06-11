@@ -117,16 +117,24 @@ defmodule Neuro.Network do
     quote do
       def __pins__(assigns) do
         import Cuda.Graph.Node, only: [output_pin_types: 0]
-        case Keyword.get(assigns.options, :type) do
+        pins = unquote(pins)
+        type = Keyword.get(assigns.options, :type)
+        f = Cuda.Env.f(assigns.env)
+        pins = if type != :back_propagation do
+          pins |> Enum.map(fn
+            %{type: :input} = pin -> %{pin | group: :activation}
+            pin -> pin
+          end)
+        else
+          pins
+        end
+        case type do
           :training ->
-            pins = unquote(pins)
-            pins = pins |> Enum.map(fn
-              %{type: :input} = pin -> %{pin | layout: :fixed}
-              pin -> pin
-            end)
             output = pins |> Enum.find(& &1.type in output_pin_types())
+            pins = pins |> Enum.reject(& &1.type in output_pin_types())
             reply = %{output | id: :reply, type: :input}
-            pins ++ [reply]
+            error = Cuda.Graph.Node.output(:error, f)
+            pins ++ [reply, error]
           :back_propagation ->
             unquote(pins) |> Enum.reduce([], fn
               %{type: :output} = pin, pins -> [%{pin | type: :input} | pins]
@@ -134,12 +142,7 @@ defmodule Neuro.Network do
               _, pins -> pins
             end)
           _ ->
-            pins = unquote(pins)
-            if Keyword.get(assigns.options, :training) == true do
-              Enum.map(pins, & %{&1 | layout: :fixed})
-            else
-              pins
-            end
+            pins
         end
       end
     end
@@ -184,46 +187,35 @@ defmodule Neuro.Network do
 
     bopts = Keyword.merge(iopts, type: :back_propagation, inference: inference)
     graph = graph |> Cuda.Graph.add(:back_propagation, graph.module, bopts)
-    #back = Cuda.Graph.GraphProto.node(graph, :back_propagation)
+    back = Cuda.Graph.GraphProto.node(graph, :back_propagation)
 
     e_size = Cuda.Graph.Pin.data_arity(Cuda.Graph.NodeProto.pin(inference, :output))
+    t_size = Cuda.Graph.Pin.data_arity(Cuda.Graph.NodeProto.pin(back, :input))
 
     graph = graph
     |> Cuda.Graph.add(:error, Neuro.Nodes.Error, size: e_size)
+    |> Cuda.Graph.add(:terminator, Neuro.Nodes.Terminator, size: t_size)
     |> Cuda.Graph.link(:input, {:inference, :input})
     |> Cuda.Graph.link(:reply, {:error, :reply})
     |> Cuda.Graph.link({:inference, :output}, {:error, :input})
     |> Cuda.Graph.link({:error, :output}, {:back_propagation, :output})
-    |> Cuda.Graph.link({:back_propagation, :input}, :output)
+    |> Cuda.Graph.link({:error, :error}, :error)
+    |> Cuda.Graph.link({:back_propagation, :input}, {:terminator, :input})
 
-    graph = graph
-    |> Cuda.Graph.Processing.expand
-    graph = graph.nodes |> Enum.reduce(graph, fn
-      %{id: id, type: :gpu}, graph when is_tuple(id) and elem(id, 0) == :inference ->
-        back_id = put_elem(id, 0, :back_propagation)
-        graph |> Cuda.Graph.link({id, :output}, {back_id, :result})
+    graph = graph |> Cuda.Graph.Processing.expand
+
+    graph = graph.links |> Enum.reduce(graph, fn
+      {src, {dst, _}}, graph when is_tuple(dst) and elem(dst, 0) == :inference ->
+        src = case src do
+          {:__self__, src} -> src
+          src              -> src
+        end
+        back_id = put_elem(dst, 0, :back_propagation)
+        graph |> Cuda.Graph.link(src, {back_id, :inference})
       _, graph ->
         graph
     end)
-    graph = graph |> Cuda.Graph.Processing.precompile_wrap()
-    graph = graph.nodes |> Enum.reduce(graph, fn
-      %{type: :computation_graph} = comp, graph ->
-        comp = comp.links |> Enum.reduce(comp, fn
-          {src, {dst, _}}, comp when is_tuple(dst) and elem(dst, 0) == :inference ->
-            src = case src do
-              {:__self__, src} -> src
-              src              -> src
-            end
-            back_id = put_elem(dst, 0, :back_propagation)
-            comp |> Cuda.Graph.link(src, {back_id, :inference})
-          _, comp ->
-            comp
-        end)
-        Cuda.Graph.GraphProto.replace(graph, comp)
-      _, graph ->
-        graph
-    end)
-    #|> IO.inspect
+
     graph
   end
 

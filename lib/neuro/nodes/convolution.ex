@@ -3,7 +3,8 @@ defmodule Neuro.Nodes.Convolution do
   use Base
 
   def __batch__(%{assigns: %{back_propagation: true, vars: vars}}) do
-    [{:run, {"back", vars.block, vars.grid, [:shared]}}]
+    [{:run, {"back", vars.block, vars.grid, [:shared]}},
+     {:run, {"delta_w", {1, 1, 1}, {vars.wz, vars.wy, vars.wx}, [:shared]}}]
   end
   def __batch__(%{assigns: %{vars: vars}}) do
     [{:run, {"inference", vars.block, vars.grid, [:shared]}}]
@@ -208,6 +209,133 @@ defmodule Neuro.Nodes.Convolution do
 
       ret;
     <% end %>
+
+    <%= defkernel ctx, "delta_w", shared: u64.ptr do %>
+      .global .<%= var(:f) %> %db_acc;
+      .reg .u64 %x, %y, %z, %dw_ptr, %db_ptr, %inference_ptr, %loss_ptr, %tmp,
+                %cx, %cy, %cz;
+      .reg .<%= var(:f) %> %acc, %inference, %loss;
+      .reg .pred p;
+
+      ld.param.u64  %inference_ptr, [pins];
+      ld.param.u64  %dw_ptr, [shared];
+
+      cvt.u64.u32   %x, %ctaid.z;
+      cvt.u64.u32   %y, %ctaid.y;
+      cvt.u64.u32   %z, %ctaid.x;
+
+      setp.eq.u64      p, %x, 0;
+      setp.eq.and.u64  p, %y, 0, p;
+      @p st.global.<%= var(:f) %> [%db_acc], 0.0;
+
+      // db_ptr = z * float_size
+      mad.lo.u64    %db_ptr, %z, <%= var(:float_size) %>, %dw_ptr;
+      <%= if shared_offset(:db) > 0 do %>
+        add.u64     %db_ptr, %db_ptr, <%= shared_offset(:db) %>;
+      <% end %>
+
+      // dw_ptr = (z * wx * wy + y * wx + x) * float_size
+      mad.lo.u64    %tmp, %y, <%= var(:wx) %>, %x;
+      mad.lo.u64    %tmp, %z, <%= var(:wx) * var(:wy) %>, %tmp;
+      mad.lo.u64    %dw_ptr, %tmp, <%= var(:float_size) %>, %dw_ptr;
+      <%= if shared_offset(:dw) > 0 do %>
+        add.u64     %dw_ptr, %dw_ptr, <%= shared_offset(:dw) %>;
+      <% end %>
+
+      // loss = (y * ox + x) * float_size
+      mad.lo.u64    %tmp, %y, <%= var(:ox) %>, %x;
+      mad.lo.u64    %loss_ptr, %tmp, <%= var(:float_size) %>, %inference_ptr;
+      <%= if pin_offset(:output) > 0 do %>
+        add.u64     %loss_ptr, %loss_ptr, <%= pin_offset(:output) %>;
+      <% end %>
+
+      mov.u64       %cz, 0;
+      mov.<%= var(:f) %> %acc, 0.0;
+
+    loop_z:
+      mov.u64       %cy, 0;
+
+    loop_y:
+      mov.u64       %cx, 0;
+
+    loop_x:
+      ld.global.<%= var(:f) %>  %loss, [%loss_ptr];
+      add.<%= var(:f) %>        %acc, %acc, %loss;
+
+      add.u64       %loss_ptr, %loss_ptr, <%= var(:float_size) %>;
+      add.u64       %cx, %cx, 1;
+      setp.lo.u64   p, %cx, <%= var(:ox) - var(:wx) + 1 %>;
+      @p bra        loop_x;
+
+      add.u64       %loss_ptr, %loss_ptr, <%= var(:float_size) * (var(:wx) - 1) %>;
+      add.u64       %cy, %cy, 1;
+      setp.lo.u64   p, %cy, <%= var(:oy) - var(:wy) + 1 %>;
+      @p bra        loop_y;
+
+      add.u64       %loss_ptr, %loss_ptr, <%= var(:float_size) * (var(:ox) * var(:oy) - var(:ox) + var(:wx) - 1) %>;
+      add.u64       %cz, %cz, 1;
+      setp.lo.u64   p, %cz, <%= var(:oz) %>;
+      @p bra        loop_z;
+
+      div.approx.<%= var(:f) %> %acc, %acc, <%= (var(:ox) - var(:wx) + 1) * (var(:oy) - var(:wy) + 1) * var(:oz) %>.0;
+
+      // inference = (y * ix + x) * float_size
+      mad.lo.u64    %tmp, %y, <%= var(:x) %>, %x;
+      mad.lo.u64    %inference_ptr, %tmp, <%= var(:float_size) %>, %inference_ptr;
+      <%= if pin_offset(:inference) > 0 do %>
+        add.u64     %inference_ptr, %inference_ptr, <%= pin_offset(:inference) %>;
+      <% end %>
+
+      // accumulate bias deltas
+      red.global.add.<%= var(:f) %>  [%db_acc], %acc;
+      setp.ne.u64     p, %x, 0;
+      setp.ne.or.u64  p, %y, 0, p;
+      @p bra          calc_dw;
+
+      ld.global.<%= var(:f) %>   %loss, [%db_acc];
+      div.approx.<%= var(:f) %>  %loss, %loss, <%= var(:wx) * var(:wy) %>.0;
+      ld.global.<%= var(:f) %>   %inference, [%db_ptr];
+      add.<%= var(:f) %>         %inference, %inference, %loss;
+      st.global.<%= var(:f) %>   [%db_ptr], %inference;
+
+    calc_dw:
+      mov.u64       %cz, 0;
+      mov.<%= var(:f) %> %inference, 0.0;
+
+    loop_iz:
+      mov.u64       %cy, 0;
+
+    loop_iy:
+      mov.u64       %cx, 0;
+
+    loop_ix:
+      ld.global.<%= var(:f) %>  %loss, [%inference_ptr];
+      add.<%= var(:f) %>        %inference, %inference, %loss;
+
+      add.u64       %inference_ptr, %inference_ptr, <%= var(:float_size) %>;
+      add.u64       %cx, %cx, 1;
+      setp.lo.u64   p, %cx, <%= var(:ox) %>;
+      @p bra        loop_ix;
+
+      add.u64       %inference_ptr, %inference_ptr, <%= var(:float_size) * (var(:x) - var(:ox)) %>;
+      add.u64       %cy, %cy, 1;
+      setp.lo.u64   p, %cy, <%= var(:oy) %>;
+      @p bra        loop_iy;
+
+      add.u64       %inference_ptr, %inference_ptr, <%= var(:float_size) * (var(:x) * var(:y) - var(:x) + var(:ox)) %>;
+      add.u64       %cz, %cz, 1;
+      setp.lo.u64   p, %cz, <%= var(:z) %>;
+      @p bra        loop_iz;
+
+      div.approx.<%= var(:f) %> %inference, %inference, <%= var(:ox) * var(:oy) * var(:z) %>.0;
+
+      mul.rn.<%= var(:f) %>     %acc, %acc, %inference;
+      ld.global.<%= var(:f) %>  %inference, [%dw_ptr];
+      add.<%= var(:f) %>        %inference, %inference, %acc;
+      st.global.<%= var(:f) %>  [%dw_ptr], %inference;
+
+      ret;
+    <% end %>
     """
   end
 
@@ -250,10 +378,18 @@ defmodule Neuro.Nodes.Convolution do
   end
 
   def shared(key, vars) do
-    shared = %{weights: %{key => {vars.f, vars.wx * vars.wy * vars.wz}},
-               biases:  %{key => {vars.f, vars.wx * vars.wy * vars.wz}}}
+    w_size = vars.wx * vars.wy * vars.wz
+    b_size = vars.wz
+    shared = %{weights: %{key => {vars.f, w_size}},
+               biases:  %{key => {vars.f, b_size}}}
     shared = if vars.training do
       Map.merge(shared, %{states: %{key => {vars.f, vars.ox * vars.oy * vars.oz}}})
+    else
+      shared
+    end
+    shared = if vars.back_propagation do
+      Map.merge(shared, %{dw: %{key => {vars.f, w_size}},
+                          db: %{key => {vars.f, b_size}}})
     else
       shared
     end

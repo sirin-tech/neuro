@@ -13,7 +13,7 @@ defmodule Neuro.Layers.FullyConnected do
     graph
     |> add(:fc_node, Nodes.FullyConnected)
     |> link(:output, {:fc_node, :output})
-    |> link(:result, {:fc_node, :result})
+    #|> link(:result, {:fc_node, :result})
     |> link(:inference, {:fc_node, :inference})
     |> close()
   end
