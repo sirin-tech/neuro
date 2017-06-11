@@ -1,1 +1,2 @@
-%{"uuid": {:hex, :uuid, "1.1.7", "007afd58273bc0bc7f849c3bdc763e2f8124e83b957e515368c498b641f7ab69", [:mix], []}}
+%{"gen_stage": {:hex, :gen_stage, "0.12.0", "74ec6f84ea0e0e81aa26b745870495094de1c59bfdbd012ae3103208ea124623", [:mix], [], "hexpm"},
+  "uuid": {:hex, :uuid, "1.1.7", "007afd58273bc0bc7f849c3bdc763e2f8124e83b957e515368c498b641f7ab69", [:mix], [], "hexpm"}}
