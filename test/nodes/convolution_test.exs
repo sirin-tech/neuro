@@ -58,6 +58,21 @@ defmodule Neuro.Nodes.ConvolutionTest do
     end
 
     @tag graph: Inference
+    @tag options: [size: {2, 2}, kernel_size: {2, 2}, padding: 1]
+    @tag shared: %{
+      weights: %{network: [1.0, 2.0, 3.0, 4.0]},
+      biases:  %{network: [0.0]}
+    }
+    test "padding", ctx do
+      i = [0.1, 0.2, 0.3, 0.4]
+
+      {:ok, worker} = Cuda.Worker.start_link(ctx[:worker_options])
+      {:ok, o} = Cuda.Worker.run(worker, %{input: i})
+
+      assert o.output |> round!() == [[0.4, 1.1, 0.6], [1.4, 3.0, 1.4], [0.6, 1.1, 0.4]]
+    end
+
+    @tag graph: Inference
     @tag options: [size: {4, 4}, kernel_size: {2, 2, 2}]
     @tag shared: %{
       weights: %{network: [[1.0, 2.0, 3.0, 4.0],
@@ -117,16 +132,44 @@ defmodule Neuro.Nodes.ConvolutionTest do
 
       {:ok, shared} = Shared.vars(ctx[:shared_pid])
       # it accumulates delta * activation for weight correction
-      assert shared.dw.network |> round!() == [1.2, 2.6, 4.5, 6.4]
+      assert shared.dw.network |> round!(3) == [3.175, 3.425, 3.925, 4.175]
       # it accumulates delta for bias correction
       assert shared.db.network |> round!(2) == [0.25]
 
       {:ok, _o} = Cuda.Worker.run(worker, %{output: i, inference: inf})
       {:ok, shared} = Shared.vars(ctx[:shared_pid])
       # it accumulates delta * activation for weight correction
-      assert shared.dw.network |> round!() == [2.4, 5.2, 9.0, 12.8]
+      assert shared.dw.network |> round!(2) == [6.35, 6.85, 7.85, 8.35]
       # it accumulates delta for bias correction
       assert shared.db.network |> round!() == [0.5]
+    end
+
+    @tag graph: BackPropagation
+    @tag options: [size: {2, 2}, kernel_size: {2, 2}, padding: 1, back_propagation: true]
+    @tag shared: %{
+      weights: %{network: [1.0, 2.0,
+                           3.0, 4.0]},
+      biases:  %{network: [0.0]},
+      states:  %{network: [5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0]},
+      dw:      %{network: [0.0, 0.0, 0.0, 0.0]},
+      db:      %{network: [0.0]}
+    }
+    test "back propagation with padding", ctx do
+      i = [0.1, 0.2, 0.3,
+           0.4, 0.5, 0.6,
+           0.7, 0.8, 0.9]
+      inf = [[10.0, 11.0],
+             [13.0, 14.0]]
+
+      {:ok, worker} = Cuda.Worker.start_link(ctx[:worker_options])
+      {:ok, o} = Cuda.Worker.run(worker, %{output: i, inference: inf})
+      assert o.input |> round! == [[2.3, 3.3], [5.3, 6.3]]
+
+      {:ok, shared} = Shared.vars(ctx[:shared_pid])
+      # it accumulates delta * activation for weight correction
+      assert shared.dw.network |> round!(2) == [8.65, 7.45, 5.05, 3.85]
+      # it accumulates delta for bias correction
+      assert shared.db.network |> round!(2) == [0.5]
     end
   end
 end

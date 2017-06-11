@@ -4,7 +4,7 @@ defmodule Neuro.Nodes.PaddingTest do
   alias Neuro.Nodes.Padding
   import Neuro.Test.NodesHelpers
 
-  defmodule Wrapper do
+  defmodule Inference do
     use Neuro.Layers.Base
 
     def __graph__(graph) do
@@ -14,10 +14,24 @@ defmodule Neuro.Nodes.PaddingTest do
     defdelegate vars(opts, env), to: Padding
   end
 
+  defmodule BackPropagation do
+    use Neuro.Layers.Base
+
+    def __graph__(graph) do
+      graph
+      |> add(:padding, Padding, graph.assigns.options)
+      |> link(:output, {:padding, :output})
+      #|> link(:inference, {:fc, :inference})
+      |> close()
+    end
+
+    defdelegate vars(opts, env), to: Padding
+  end
+
   describe "padding node" do
     setup ~w(disable_logging load_graph)a
 
-    @tag graph: Wrapper
+    @tag graph: Inference
     @tag options: [size: {3, 3}, padding_size: {1, 1}, padding: 1.0]
     test "simple padding", ctx do
       i = [0.1, 0.2, 0.3,
@@ -38,5 +52,22 @@ defmodule Neuro.Nodes.PaddingTest do
         [1.0, 1.0, 1.0, 1.0, 1.0],
       ]
     end
+
+    #@tag graph: BackPropagation
+    #@tag options: [size: {3, 3}, padding_size: {1, 1}, padding: 1.0, back_propagation: true]
+    #test "back propagation", ctx do
+    #  loss = [[1.0, 1.0, 1.0, 1.0, 1.0],
+    #          [1.0, 0.1, 0.2, 0.3, 1.0],
+    #          [1.0, 0.5, 0.6, 0.7, 1.0],
+    #          [1.0, 1.0, 0.1, 0.2, 1.0],
+    #          [1.0, 1.0, 1.0, 1.0, 1.0]]
+
+    #  {:ok, worker} = Cuda.Worker.start_link(ctx[:worker_options])
+    #  {:ok, o} = Cuda.Worker.run(worker, %{output: loss})
+
+    #  assert o.input |> round!() == [[0.1, 0.2, 0.3],
+    #                                 [0.5, 0.6, 0.7],
+    #                                 [1.0, 0.1, 0.2]]
+    #end
   end
 end
