@@ -39,13 +39,10 @@ defmodule Neuro.Nodes.Convolution do
       mul.lo.u64    %sy, %y, <%= var(:sy) %>;
 
       // input.offset = input + (tid.x * sx + tid.y * sy * x) * float_size
-      // y and x will be added later
-      //mul.lo.u64    %i_ptr, %sy, <%= var(:x) %>;
-      //mad.lo.u64    %i_ptr, %i_ptr, <%= var(:float_size) %>, %pins;
+      mad.lo.u64    %i_ptr, %sy, <%= var(:x) %>, %sx;
+      mad.lo.u64    %i_ptr, %i_ptr, <%= var(:float_size) %>, %pins;
       <%= if pin_offset(:input) > 0 do %>
-        add.u64       %i_ptr, %pins, <%= pin_offset(:input) %>;
-      <% else %>
-        mov.u64       %i_ptr, %pins;
+        add.u64     %i_ptr, %i_ptr, <%= pin_offset(:input) %>;
       <% end %>
 
       // output.offset = output + (tid.z * ox * oy + tid.y * ox + tid.x) * float_size
@@ -84,6 +81,7 @@ defmodule Neuro.Nodes.Convolution do
         @p bra          bottom_padding;
         sub.u64         %py, <%= var(:py) %>, %sy;
         sub.u64         %cy, <%= var(:wy) %>, %py;
+        mad.lo.u64      %i_ptr, %py, <%= var(:x) * var(:float_size) %>, %i_ptr;
         <%= if var(:pv) == 0.0 do %>
           mad.lo.u64  %w_ptr, %py, <%= var(:wx) * var(:float_size) %>, %w_ptr;
         <% else %>
@@ -101,21 +99,19 @@ defmodule Neuro.Nodes.Convolution do
         @p sub.u64      %py, %sy, <%= var(:y) - var(:wy) + var(:py) %>;
         @p sub.u64      %cy, %cy, %py;
         @p sub.u64      %z, %sy, <%= var(:py) %>;
-        @p mad.lo.u64   %i_ptr, %z, <%= var(:x) * var(:float_size) %>, %i_ptr;
       <% end %>
       <%= if var(:padding) and var(:px) > 0 do %>
         mov.u64         %px1, 0;
         mov.u64         %px2, 0;
         setp.lo.u64     p, %sx, <%= var(:px) %>;
         @p sub.u64      %px1, <%= var(:px) %>, %sx;
+        @p mad.lo.u64   %i_ptr, %px1, <%= var(:float_size) %>, %i_ptr;
         setp.hi.u64     p, %sx, <%= var(:x) - var(:wx) + var(:px) %>;
         @p sub.u64      %px2, %sx, <%= var(:x) - var(:wx) + var(:px) %>;
         @p sub.u64      %z, %sx, <%= var(:px) %>;
-        @p mad.lo.u64   %i_ptr, %z, <%= var(:float_size) %>, %i_ptr;
       <% end %>
-      <%= if not var(:padding) do %>
-        mad.lo.u64    %i_ptr, %sx, <%= var(:float_size) %>, %i_ptr;
-        mad.lo.u64    %i_ptr, %sy, <%= var(:x) * var(:float_size) %>, %i_ptr;
+      <%= if var(:padding) do %>
+        sub.u64         %i_ptr, %i_ptr, <%= (var(:px) + var(:py) * var(:x)) * var(:float_size) %>;
       <% end %>
 
     loop_y:
@@ -189,9 +185,7 @@ defmodule Neuro.Nodes.Convolution do
       <%= if var(:padding) and var(:py) > 0 do %>
         setp.eq.u64   p, %py, 0;
         @p bra        skip_py;
-        <%= if var(:pv) == 0.0 do %>
-          mad.lo.u64  %w_ptr, %py, <%= var(:wx) * var(:float_size) %>, %w_ptr;
-        <% else %>
+        <%= if var(:pv) != 0.0 do %>
         loop_py2:
           ld.global.<%= var(:f) %> %w, [%w_ptr];
           mad.rn.<%= var(:f) %>    %acc, %w, <%= var(:pv) %>, %acc;
@@ -528,7 +522,7 @@ defmodule Neuro.Nodes.Convolution do
       sx: sx, sy: sy,
       padding: padding, px: px, py: py, pv: pv,
       grid: grid, block: block,
-      activation: activation}
+      activation: activation}# |> IO.inspect
   end
 
   def cta(ox, oy, oz, info) do

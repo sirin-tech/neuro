@@ -111,6 +111,33 @@ defmodule Neuro.Nodes.ConvolutionTest do
       assert shared.states.network |> round!() == [3.7, 4.7, 6.7, 7.7]
     end
 
+    @tag graph: Inference
+    @tag options: [size: {3, 3}, kernel_size: {2, 2, 2}, padding: 1]
+    @tag shared: %{
+      weights: %{network: [[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]]},
+      biases:  %{network: [0.0, 0.0]}
+    }
+    test "bigger convolution with padding", ctx do
+      i = [0.1, 0.2, 0.3,
+           0.5, 0.6, 0.8,
+           1.0, 0.1, 0.2]
+
+      {:ok, worker} = Cuda.Worker.start_link(ctx[:worker_options])
+      {:ok, o} = Cuda.Worker.run(worker, %{input: i})
+
+      assert o.output |> round!() == [
+        [[0.4, 1.1, 1.8, 0.9],
+         [2.2, 4.4, 5.8, 2.7],
+         [5.0, 5.1, 3.3, 1.4],
+         [2.0, 1.2, 0.5, 0.2]],
+
+        [[0.8,   2.3,  3.8, 2.1],
+         [4.6,  10.0, 13.4, 7.1],
+         [11.0, 13.9, 10.1, 5.4],
+         [6.0,   5.6,  1.7, 1.0]]
+      ]
+    end
+
     @tag graph: BackPropagation
     @tag options: [size: {3, 3}, kernel_size: {2, 2}, back_propagation: true]
     @tag shared: %{
